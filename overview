@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Usage: overview start|stop|status
+set -u
+
+# follow symlinks by hand: macOS readlink has no -f before 12.3
+src="$0"
+while [ -L "$src" ]; do
+  dir="$(cd -P "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"
+  case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+done
+DIR="$(cd -P "$(dirname "$src")" && pwd)"
+SERVER="$DIR/server.js"
+PORT="${CLAUDE_OVERVIEW_PORT:-3100}"
+URL="http://127.0.0.1:$PORT/"
+
+# Only node itself (by name or full path) running server.js counts, never a shell that mentions server.js.
+pids() {
+  ps -A -ww -o pid= -o comm= -o args= 2>/dev/null | while read -r pid comm args; do
+    [ "${comm##*/}" = node ] || continue
+    case "$args" in "node $SERVER" | */node\ "$SERVER") echo "$pid" ;; esac
+  done
+}
+
+case "${1:-status}" in
+  start)
+    running="$(pids)"
+    if [ -n "$running" ]; then echo "Already running (pid $running): $URL"; exit 0; fi
+    if ! command -v node > /dev/null; then echo "Needs Node.js: https://nodejs.org"; exit 1; fi
+    cd "$DIR" || exit 1
+    # setsid and ionice are Linux tools; without them nohup alone detaches the server
+    lead=()
+    command -v setsid > /dev/null && lead+=(setsid)
+    lead+=(nohup nice -n 10)
+    command -v ionice > /dev/null && lead+=(ionice -c 3)
+    CLAUDE_OVERVIEW_PORT="$PORT" "${lead[@]}" node "$SERVER" >> "$DIR/overview.log" 2>&1 < /dev/null &
+    sleep 1
+    running="$(pids)"
+    if [ -n "$running" ]; then echo "Started (pid $running): $URL"; else echo "Did not start; see $DIR/overview.log"; exit 1; fi
+    ;;
+  stop)
+    running="$(pids)"
+    if [ -z "$running" ]; then echo "Not running"; exit 0; fi
+    kill $running && echo "Stopped (pid $running)"
+    ;;
+  status)
+    running="$(pids)"
+    if [ -n "$running" ]; then echo "Running (pid $running): $URL"; else echo "Not running"; fi
+    ;;
+  *)
+    echo "Usage: overview start|stop|status"; exit 2
+    ;;
+esac
