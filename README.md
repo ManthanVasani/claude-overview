@@ -2,18 +2,33 @@
 
 **See every Claude Code session on your machine at once, and which one is waiting on you.**
 
+[![npm](https://img.shields.io/npm/v/claude-overview)](https://www.npmjs.com/package/claude-overview)
 ![Tokens: zero](https://img.shields.io/badge/tokens-zero-2ea043)
 ![Claude data: read-only](https://img.shields.io/badge/Claude%20data-read--only-2ea043)
 ![Listens on 127.0.0.1 only](https://img.shields.io/badge/listens%20on-127.0.0.1%20only-2ea043)
 ![npm dependencies: none](https://img.shields.io/badge/npm%20dependencies-none-2ea043)
 
+Running a few Claude Code sessions at once, and one has been sitting on a permission prompt while you worked in
+another window? claude-overview puts every session on one live board in your browser and shows which one needs you.
+
 ![The board updating live: a session turns pink when it needs you, and clicking an agent opens its details](docs/screenshots/demo.gif)
 
-It shows each session with its agents, workflows and background shells, a timeline of every tool call, the files,
-servers and sites each session is touching, and your token usage. It only reads files Claude Code already writes, so
-it costs no tokens.
+```
+npx claude-overview
+```
 
-The demo and the screenshots show made-up projects.
+Then open http://127.0.0.1:3100/. It runs until you press Ctrl + C.
+
+## What you get
+
+- **Which session needs you.** A session waiting for your permission or an answer turns pink, and the tab title
+  counts the sessions that are waiting.
+- **Desktop alerts** when a session needs you or something fails, while the page is open but not in front.
+- **Everything a session runs:** its agents, workflows and background shells, and what each one is doing now.
+- **A timeline of every tool call**, over the last 15 minutes, hour or 3 hours, or live.
+- **What each session is touching:** the files, servers and sites it works with.
+- **Token usage:** totals by day, model, session and folder, and the plan limits of each account with cswap.
+- **No tokens, no changes:** it only reads files Claude Code already writes.
 
 ## Requirements
 
@@ -22,46 +37,43 @@ The demo and the screenshots show made-up projects.
 - Claude Code, in VS Code or in the terminal.
 - Optional: [cswap](https://github.com/realiti4/claude-swap), to show the plan limits of each account.
 
-## Install
+## More ways to run it
 
-```
-npx claude-overview
-```
-
-Then open http://127.0.0.1:3100/. It runs until you press Ctrl + C. `npm install -g claude-overview` keeps it
-installed, so `claude-overview` starts it.
-
-Or clone this repository and start it in the background from its folder:
-
-```
-./overview start
-```
-
-- `./overview status` and `./overview stop` do what they say.
+- `npm install -g claude-overview` keeps it installed, so `claude-overview` starts it.
+- Or clone this repository and run `./overview start` in its folder to start it in the background.
+  `./overview status` and `./overview stop` check on it and stop it.
 - To use another port, set `CLAUDE_OVERVIEW_PORT` before starting it.
 - It does not start again by itself after a restart.
 
 ## Using it
 
-- Scroll to move around the board, or drag it. Shift + scroll moves sideways.
-- Ctrl + scroll (Command on a Mac), a pinch, or Ctrl + and Ctrl - zoom. F fits the board to the window: all of it when
-  it fits at a size you can read, otherwise the window's width, and you scroll down for the rest. 0 is full size.
-- Shift + F, or the button at the bottom right, goes full screen. S hides or shows the right-hand column, in a window
-  wide enough to have one.
-- Click a card to see what it is doing, what it has touched and what failed.
-- The timeline at the bottom shows every tool call: 15m, 1h, 3h, or Live. T folds it away.
-- Usage, or the U key, opens token totals by day, model, session and folder, and the plan limits of each cswap account.
-- The tab title counts the sessions Claude Code reports as waiting for you. The bell turns on desktop alerts for when the page is not in front:
-  a session needs you, something fails or stops and, if you tick it, a session finishes its turn. Clicking an alert
-  opens that card. An alert can quote an error or what the session last said, so it can show on your lock screen.
-- A reload keeps how you left it: the zoom (and the scroll, in a window of the same size), the open panel, expanded
-  groups, the timeline and the right-hand column.
+| Key or action | What it does |
+| --- | --- |
+| Scroll, or drag | Moves around the board. Shift + scroll moves sideways. |
+| Ctrl + scroll, a pinch, Ctrl + and Ctrl - | Zoom. Command instead of Ctrl on a Mac. |
+| F | Fits the board to the window: all of it when it fits at a size you can read, otherwise the window's width. |
+| 0 | Full size. |
+| Shift + F | Full screen. So does the button at the bottom right. |
+| S | Hides or shows the right-hand column, in a window wide enough to have one. |
+| Click a card | Shows what it is doing, what it has touched and what failed. |
+| The timeline | Every tool call over the last 15m, 1h or 3h, or Live. T folds it away and L goes back to Live. |
+| Usage, or U | Token totals by day, model, session and folder, and the plan limits of each cswap account. |
+
+The bell in the bottom row turns on desktop alerts. They show while the page is open but not in front: a session
+needs you, something fails or stops and, if you tick it, a session finishes its turn. Clicking an alert opens that
+card. An alert can quote an error or what the session last said, so it can show on your lock screen. The bell is
+hidden on a phone-sized screen.
+
+A reload keeps how you left it: the zoom (and the scroll, in a window of the same size), the open panel, expanded
+groups, the timeline and the right-hand column.
 
 ![The whole board: five sessions, the needs-attention list, what they are touching and the timeline](docs/screenshots/overview.png)
 
 ![The detail panel of a running agent](docs/screenshots/details.png)
 
 ![The usage drawer with plan limits and a week of tokens](docs/screenshots/usage.png)
+
+The demo and the screenshots show made-up projects.
 
 ## What it reads
 
@@ -78,7 +90,14 @@ low priority.
 Token totals come from the transcripts on this machine. Runs started with `claude -p --no-session-persistence`
 write no transcript, so they are not counted.
 
+## Contributing
+
+Bug reports and ideas are welcome in [Issues](https://github.com/ManthanVasani/claude-overview/issues), and so are
+pull requests. There is no build step: `node server.js` in a clone runs your copy.
+
 ## License
 
 MIT, see [LICENSE](LICENSE). The bundled `vendor/d3.min.js` is [d3](https://d3js.org) under its own ISC license,
 in [vendor/d3-LICENSE](vendor/d3-LICENSE).
+
+claude-overview is an independent project. It is not made, endorsed or supported by Anthropic.
