@@ -77,7 +77,8 @@ function save() {
   const now = Date.now();
   for (const p in files) {
     const r = files[p];
-    if (r.recent.length && now - r.mtime > RECENT_IDLE_MS) r.recent = [];
+    // a file not fully read still needs them, however old it is
+    if (r.recent.length && r.off >= r.size && now - r.mtime > RECENT_IDLE_MS) r.recent = [];
   }
   // two servers on different ports can share the index
   const tmp = INDEX + '.' + process.pid + '.tmp';
