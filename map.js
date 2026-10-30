@@ -1461,12 +1461,13 @@
     }
     alertsEl.hidden = false;
     const needs = items.filter((x) => x.level === 'needs').length;
+    const probs = items.length - needs;
     if (needs > Math.max(0, needsSeen) && !alertsOpen && (needsSeen >= 0 || innerWidth > 640)) { alertsOpen = true; store(ALERTS_KEY, '1'); }
     needsSeen = needs;
     const shown = alertsAll ? items : items.slice(0, 5);
     let h = '<button type="button" class="al-head" data-toggle aria-expanded="' + alertsOpen + '">Needs attention' +
-      (needs ? '<span class="n need">' + needs + ' need you</span>' : '') +
-      (items.length - needs ? '<span class="n">' + (items.length - needs) + ' ' + (items.length - needs === 1 ? 'problem' : 'problems') + '</span>' : '') +
+      (needs ? '<span class="n need">' + plural(needs, 'needs you', 'need you') + '</span>' : '') +
+      (probs ? '<span class="n">' + plural(probs, 'problem', 'problems') + '</span>' : '') +
       '<span class="chev">▾</span></button><ul class="al-list">';
     for (const a of shown) {
       h += '<li class="al ' + a.level + '" data-node="' + esc(a.node) + '" tabindex="0"><div class="what">' + esc(a.title) + '</div><div class="why">' + esc(flat(a.text)) + '</div><div class="where">' + esc(a.session) + (a.since ? ' · ' + timer(a.since, true) : '') + '</div></li>';
