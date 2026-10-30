@@ -99,7 +99,7 @@ function walk() {
     r.gone = true;
     const g = groups.get(r.ino);
     // a deleted file's inode can go to an unrelated file; only the same transcript at another path is a move
-    const to = g && !r.alias && g.find((q) => !files[q].alias && files[q].sid === r.sid);
+    const to = g && !r.alias && g.find((q) => !files[q].alias && files[q].sid === r.sid && path.basename(q) === path.basename(p));
     if (to) { r.alias = to; changed = true; }
   }
   const cutoff = Date.now() - HOURS_KEEP_MS;

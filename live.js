@@ -405,7 +405,7 @@
     let fails = 0;
     for (let i = firstIndex(tn - 60e3); i < steps.length; i++) lastMin++;
     for (const st of list) if (st.ok === 0) fails++;
-    rateEl.innerHTML = '<span><b>' + list.length + '</b>calls in view</span>' + (fails ? '<span class="bad"><b>' + fails + '</b>failed</span>' : '') + '<span><b>' + lastMin + '</b>/min</span>';
+    rateEl.innerHTML = '<span class="tl-total"><b>' + list.length + '</b>calls in view</span>' + (fails ? '<span class="bad"><b>' + fails + '</b>failed</span>' : '') + '<span><b>' + lastMin + '</b>/min</span>';
   }
 
   // ---------- timeline rows ----------
@@ -560,11 +560,11 @@
           ctx.fill();
         }
         ctx.font = '600 12px ' + getComputedStyle(document.body).fontFamily;
-        const count = String(row.steps.length);
+        const count = G < 200 ? '' : String(row.steps.length);
         ctx.font = '11px ' + getComputedStyle(document.body).fontFamily;
         const cw = ctx.measureText(count).width;
         ctx.fillStyle = '#7d8a9f';
-        ctx.fillText(count, G - 20 - cw, cy);
+        if (count) ctx.fillText(count, G - 20 - cw, cy);
         let failW = 0;
         if (row.fails) {
           // a narrow gutter keeps room for the name
@@ -744,7 +744,7 @@
     let html;
     if (h.shell) {
       const sh = h.shell;
-      const word = sh.state === 'running' ? 'Running for ' + dur(now() - sh.startedAt) : sh.state === 'failed' ? 'Failed (exit ' + (sh.exit != null ? sh.exit : '?') + ')' : sh.state === 'died' ? 'Killed' : 'Finished' + (sh.doneAt ? ' in ' + dur(sh.doneAt - sh.startedAt) : '');
+      const word = sh.state === 'running' ? 'Running for ' + dur(now() - sh.startedAt) : sh.state === 'failed' ? (sh.why || 'Failed') + ' (exit ' + (sh.exit != null ? sh.exit : '?') + ')' : sh.state === 'died' ? 'Killed' : 'Finished' + (sh.doneAt ? ' in ' + dur(sh.doneAt - sh.startedAt) : '');
       html = '<div class="tt-h"><span class="sw" style="background:#aab6c8"></span>Background command<span class="tt-s ' + (sh.state === 'running' ? 'open' : sh.state === 'done' ? 'ok' : 'bad') + '">' + esc(word) + '</span></div>' +
         '<div class="tt-l">' + esc(sh.desc) + '</div><div class="tt-w">' + esc(h.row.s ? h.row.s.name : '') + ' · started ' + esc(clock(sh.startedAt, true)) + '</div>';
     } else {

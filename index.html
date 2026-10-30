@@ -101,6 +101,8 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 .hud .k-need b { color: var(--need); }
 .hud .k-bad b { color: var(--bad); }
 .hud .dot { opacity: .4; }
+#hud-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#hud-text > span:first-child .dot { display: none; }
 .mark { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--work); box-shadow: 0 0 0 3px rgba(52, 211, 153, .16), 0 0 12px rgba(52, 211, 153, .7); }
 .mark.off { background: var(--warn); box-shadow: 0 0 0 3px rgba(251, 146, 60, .16); }
 .ctrl { right: calc(var(--rail) + 16px); bottom: calc(var(--dock) + 14px); transition: right .28s cubic-bezier(.2, .8, .2, 1); display: flex; gap: 8px; padding: 0; background: none; border: 0; box-shadow: none; backdrop-filter: none; }
@@ -688,12 +690,15 @@ body.panel-open .r-alerts .alerts { right: auto; }
 @keyframes rowHit { 0% { background: color-mix(in srgb, var(--kc) 30%, transparent); } }
 /* the dock narrows when a panel opens, so its header follows the dock's width, not the window's */
 .dock { container-type: inline-size; }
-@container (max-width: 1150px) { .kinds button span { display: none; } .kinds button { padding: 0 7px; } }
-@container (max-width: 860px) { .dock-head h2, .tl-rate span:not(.bad) { display: none; } .dock-head { gap: 7px; padding-left: 12px; } }
+@container (max-width: 1150px) { .dock-head h2, .tl-rate .tl-total { display: none; } .dock-head { gap: 8px; padding-left: 12px; } }
+@container (max-width: 900px) { .kinds button b { display: none; } .kinds button { padding: 0 7px; } }
+@container (max-width: 760px) { .tl-rate span:not(.bad) { display: none; } }
+@container (max-width: 700px) { .kinds button span { display: none; } .kinds button b { display: inline; } }
 @container (max-width: 560px) { .kinds { display: none; } }
 
 @media (max-width: 640px) {
   .hud { max-width: calc(100vw - 32px); bottom: calc(var(--dock) + 54px); }
+  .hud .k-low { display: none; }
   .banner { max-width: calc(100vw - 32px); top: auto; bottom: calc(var(--dock) + 94px); }
   body.panel-open .alerts { display: none; }
   .al-list { max-height: 30vh; }

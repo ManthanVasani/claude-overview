@@ -16,8 +16,8 @@ URL="http://127.0.0.1:$PORT/"
 
 # Only node itself (by name or full path) running server.js counts, never a shell that mentions server.js.
 pids() {
-  ps -A -ww -o pid= -o comm= -o args= 2>/dev/null | while read -r pid comm args; do
-    [ "${comm##*/}" = node ] || continue
+  ps -A -ww -o pid= -o ucomm= -o args= 2>/dev/null | while read -r pid comm args; do
+    [ "$comm" = node ] || continue
     case "$args" in "node $SERVER" | */node\ "$SERVER") echo "$pid" ;; esac
   done
 }

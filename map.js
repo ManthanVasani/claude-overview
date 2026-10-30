@@ -854,7 +854,7 @@
           actLine(act, wraps(n)) + '</div>';
       }
       case 'shell': {
-        const word = x.state === 'failed' ? 'exit ' + (x.exit != null ? x.exit : '?') : x.state === 'died' ? 'killed' : x.state;
+        const word = x.state === 'failed' ? (x.why ? x.why.toLowerCase() : 'exit ' + (x.exit != null ? x.exit : '?')) : x.state === 'died' ? 'killed' : x.state;
         const right = x.state === 'running' ? timer(x.startedAt) : '<span class="tm">' + esc(word) + '</span>';
         return '<div class="shell" title="' + esc(x.desc) + '">' + shellIcon(x) + '<span class="tx">' + esc(x.desc) + '</span>' + right + '</div>';
       }
@@ -1331,6 +1331,7 @@
           ['Started', when(x.startedAt)],
           ['Folder', esc(x.cwd || '')],
           ['Process', esc(x.pid + (x.alive ? '' : ' (ended)'))],
+          ['Run', x.headless ? esc(x.headless.kept ? 'claude -p' : 'claude -p, no transcript kept') : ''],
         ]));
         h += sec('Last steps', steps(x.recent));
         break;
@@ -1383,7 +1384,7 @@
           ['Started', when(x.startedAt)],
           ['Running for', x.state === 'running' ? timer(x.startedAt) : ''],
           ['Took', x.doneAt && x.startedAt ? esc(dur(x.doneAt - x.startedAt)) : ''],
-          ['Exit code', x.exit != null ? String(x.exit) : ''],
+          ['Exit code', x.exit != null ? String(x.exit) + (x.why ? ' · ' + esc(x.why.toLowerCase()) : '') : ''],
           ['Result', esc(x.summary || '')],
           ['Process', x.pid ? String(x.pid) : ''],
           ['Task', esc(x.id)],
@@ -1504,15 +1505,15 @@
 
   function renderHud() {
     const t = (snap && snap.totals) || {};
-    const part = (n, one, many, k) => '<span class="' + (k || '') + '"><b>' + n + '</b>' + (n === 1 ? one : many) + '</span>';
+    const part = (n, one, many, k) => '<span class="' + (k || '') + '"><span class="dot">·</span><b>' + n + '</b>' + (n === 1 ? one : many) + '</span>';
     const bits = [part(t.sessions || 0, 'session', 'sessions')];
     if (t.working) bits.push(part(t.working, 'working', 'working', 'k-work'));
     if (t.needsYou) bits.push(part(t.needsYou, 'needs you', 'need you', 'k-need'));
     if (t.problems) bits.push(part(t.problems, 'problem', 'problems', 'k-bad'));
-    if (t.agentsRunning) bits.push(part(t.agentsRunning, 'agent', 'agents'));
-    if (t.shellsRunning) bits.push(part(t.shellsRunning, 'shell', 'shells'));
-    if (t.workflowsRunning) bits.push(part(t.workflowsRunning, 'workflow', 'workflows'));
-    hudText.innerHTML = (connected ? '' : 'Reconnecting · ') + bits.join('<span class="dot">·</span>');
+    if (t.agentsRunning) bits.push(part(t.agentsRunning, 'agent', 'agents', 'k-low'));
+    if (t.shellsRunning) bits.push(part(t.shellsRunning, 'shell', 'shells', 'k-low'));
+    if (t.workflowsRunning) bits.push(part(t.workflowsRunning, 'workflow', 'workflows', 'k-low'));
+    hudText.innerHTML = (connected ? '' : 'Reconnecting · ') + bits.join('');
     mark.classList.toggle('off', !connected);
   }
 

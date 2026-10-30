@@ -19,7 +19,6 @@
   let html = '';
   let timer = 0;
   let busy = false;
-  let again = false;
 
   function load(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
   function store(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private window */ } }
@@ -70,7 +69,7 @@
     let h = '<div class="u-accs">';
     for (const a of list) {
       const cls = 'u-acc' + (a.active ? ' on' : '') + (a.dead || a.disabled ? ' off' : '');
-      h += '<div class="' + cls + '"><div class="u-who"><b>#' + a.num + '</b><span class="em" title="' + esc(a.org) + '">' + esc(a.alias || a.email) + '</span>' + (a.active ? '<span class="u-badge">active</span>' : '') + '</div>';
+      h += '<div class="' + cls + '"><div class="u-who"><b>#' + Number(a.num) + '</b><span class="em" title="' + esc(a.org) + '">' + esc(a.alias || a.email) + '</span>' + (a.active ? '<span class="u-badge">active</span>' : '') + '</div>';
       if (a.dead) h += '<div class="u-warn">Re-login needed: log in with Claude Code, then run <code>cswap add</code></div>';
       else if (a.disabled) h += '<div class="u-dim">Turned off in cswap</div>';
       else if (a.apiKey) h += '<div class="u-dim">API key account: no plan limits</div>';
@@ -153,7 +152,7 @@
       tile('Cache write', fmt(t[3]), 'Input tokens written to the prompt cache') +
       tile('Cache read', fmt(t[4]), 'Input tokens read back from the prompt cache') +
       '</div>';
-    h += '<p class="u-note">' + t[0].toLocaleString() + ' replies' + (t[2] ? ' · agents wrote ' + Math.round((d.agents[2] / t[2]) * 100) + '% of the output' : '') + '</p>';
+    h += '<p class="u-note" title="Runs started with claude -p --no-session-persistence write no transcript, so they are not counted">' + t[0].toLocaleString() + ' replies in this machine\'s transcripts' + (t[2] ? ' · agents wrote ' + Math.round((d.agents[2] / t[2]) * 100) + '% of the output' : '') + '</p>';
     const used = FAMILIES.map((f, k) => k).filter((k) => d.series.some((p) => Object.keys(p.m).some((m) => family(m) === k && p.m[m][metric])));
     h += '<div class="u-chart">' + chart(d.series, width) + '<div class="u-tip" hidden></div></div>';
     h += '<div class="u-legend">' + used.map((k) => '<span><i style="background:' + FAMILIES[k][2] + '"></i>' + FAMILIES[k][0] + '</span>').join('') + '</div>';
@@ -207,17 +206,16 @@
     html = h;
   }
   function fetchNow() {
-    if (busy) { again = true; return; }
+    if (busy) return;
     busy = true;
-    again = false;
     const want = range;
     fetch('/usage?range=' + encodeURIComponent(want), { cache: 'no-store' })
       .then((r) => r.json())
-      .then((d) => { if (want === range) data = d; else again = true; })
+      .then((d) => { if (want === range) data = d; })
       .catch(() => { /* the next refresh tries again */ })
       .then(() => {
         busy = false;
-        if (again) { fetchNow(); return; }
+        if (want !== range) { fetchNow(); return; }
         if (OV.selected() !== ID) return;
         build();
         OV.repaint();

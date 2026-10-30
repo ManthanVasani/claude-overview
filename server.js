@@ -93,9 +93,11 @@ class Tail {
     }
     this.ino = st.ino;
     if (this.offset === null) {
-      this.offset = Math.max(0, st.size - this.firstBytes);
+      const from = Math.max(0, st.size - this.firstBytes);
+      const at = lineStart(this.file, from);
+      this.offset = at < 0 ? from : at;
       this.startOffset = this.offset;
-      this.skipping = this.offset > 0;
+      this.skipping = at < 0;
     }
     if (st.size <= this.offset) return [];
     const want = Math.min(st.size - this.offset, MAX_READ_PER_POLL);
@@ -134,6 +136,23 @@ class Tail {
     }
     return out;
   }
+}
+
+function lineStart(file, pos) {
+  if (pos <= 0) return 0;
+  let fd;
+  try { fd = fs.openSync(file, 'r'); } catch { return -1; }
+  try {
+    const buf = Buffer.allocUnsafe(1 << 20);
+    for (let end = pos; end > 0 && pos - end < MAX_PENDING_LINE;) {
+      const n = Math.min(buf.length, end);
+      const got = fs.readSync(fd, buf, 0, n, end - n);
+      const i = got > 0 ? buf.lastIndexOf(10, got - 1) : -1;
+      if (i >= 0) return end - n + i + 1;
+      end -= n;
+    }
+    return pos >= MAX_PENDING_LINE ? -1 : 0;
+  } catch { return -1; } finally { fs.closeSync(fd); }
 }
 
 function oneLine(s, n) {
@@ -223,7 +242,7 @@ const PATHLIKE = /^(?:[~./]|[\w-]+\/)[^\s'"|;&<>()$`*]*$|^[\w.-]+\.(?:rb|js|ts|j
 function commandKey(cmd, cwd) {
   if (typeof cmd !== 'string' || !cmd.trim()) return null;
   if (/\bgh\s+(?:pr|api|issue|run|repo)\b|\bgit\s+(?:push|fetch|pull|ls-remote)\b/.test(cmd)) return 'svc:github';
-  let m = /\bssh\s+(?:-[BbcDEeFIiJLlmOopQRSWw]\s*\S+\s+|-[\w-]+\s+)*(?:[\w.-]+@)?([\w.-]+)/.exec(cmd);
+  let m = /\bssh\s+(?:-[BbcDEeFIiJLlmOopQRSWw]\s*\S+\s+|-[46AaCfGgKkMNnqsTtVvXxYy]+\s+)*(?:[\w.-]+@)?([\w.][\w.-]*)/.exec(cmd);
   if (m) return 'host:' + m[1];
   m = /\bcurl\b[^|;&]*?https?:\/\/([\w.-]+(?::\d+)?)/.exec(cmd);
   if (m) return 'host:' + m[1];
@@ -315,7 +334,7 @@ function recordStep(c, id, name, input, label, t, cwd) {
   evNew.push(e);
   return e;
 }
-// ok: 1 finished, 0 failed, 2 cut off (interrupted, turn ended, session error)
+// ok: 1 finished, 0 failed, 2 cut off
 function endStep(e, t, ok, err) {
   if (!e || e.e) return;
   e.e = t || Date.now();
@@ -324,21 +343,29 @@ function endStep(e, t, ok, err) {
   evEnded.push([e.s, e.e, ok, e.err || null]);
 }
 function cutPending(c, t) {
-  for (const p of c.pending.values()) if (p.ev) endStep(p.ev, t, 2, null);
+  for (const p of c.pending.values()) if (p.ev) endStep(p.ev, Math.max(t, p.ev.t), 2, null);
   c.lastCutAt = t;
   const early = histOpen.get(c.S.id + '|' + c.owner);
   if (early) {
-    for (const e of early) endStep(e, t, 2, null);
+    for (const e of early) endStep(e, Math.max(t, e.t), 2, null);
     histOpen.delete(c.S.id + '|' + c.owner);
   }
 }
+// a call made before the session's current process started ended with the earlier process
+function cutBefore(c, t) {
+  for (const p of c.pending.values()) if (p.ev && p.at < t - 2000) endStep(p.ev, Math.max(t, p.ev.t), 2, null);
+  const early = histOpen.get(c.S.id + '|' + c.owner);
+  if (!early) return;
+  for (const e of early) if (e.t < t - 2000) { endStep(e, t, 2, null); early.delete(e); }
+  if (!early.size) histOpen.delete(c.S.id + '|' + c.owner);
+}
 function trimSteps(now) {
-  if (now - evTrimAt < MIN && evLog.length < EV_MAX) return;
+  if (now - evTrimAt < MIN && evLog.length <= EV_MAX) return;
   evTrimAt = now;
   const min = now - EV_KEEP_MS;
   const keep = evLog.filter((e) => e.t >= min);
   // history read later is older than what came first: past the cap, the oldest go
-  if (keep.length > EV_MAX) keep.sort((a, b) => a.t - b.t).splice(0, keep.length - EV_MAX);
+  if (keep.length > EV_MAX) keep.sort((a, b) => a.t - b.t).splice(0, keep.length - EV_MAX * 0.9);
   if (keep.length === evLog.length) return;
   evLog.length = 0;
   for (const e of keep) evLog.push(e);
@@ -553,6 +580,9 @@ function noteNotification(c, content, t) {
   if (tool) setEnd(c.S, tool[1].trim(), rec);
 }
 
+const EXIT_WHY = { 126: 'Not executable', 127: 'Command not found', 130: 'Interrupted', 137: 'Killed', 143: 'Terminated' };
+function exitWhy(code, timed) { return code === 124 && timed ? 'Timed out' : EXIT_WHY[code] || null; }
+
 function registerTask(c, id, info) {
   const S = c.S;
   if (!S || !id) return;
@@ -571,6 +601,7 @@ function registerTask(c, id, info) {
   if (info.desc) { k.desc = info.desc; k.needsInfo = false; }
   if (info.kind) k.kind = info.kind;
   if (info.cmd && !k.cmdKey) k.cmdKey = cmdKey(info.cmd);
+  if (info.cmd) k.timed = /(?:^|[\s;&|(])timeout\s/.test(info.cmd);
   if (info.timeoutMs) k.timeoutMs = info.timeoutMs;
   if (!k.startedAt && info.at) k.startedAt = info.at;
 }
@@ -987,6 +1018,18 @@ function noteRunningTasks(S, now, used) {
   }
 }
 
+// with --no-session-persistence a claude -p run writes no transcript
+function headlessOf(pid) {
+  const cmd = cmdOf(pid);
+  if (!cmd) return null;
+  const words = cmd.split(' ').filter(Boolean);
+  const i = words.findIndex((w) => w === '-p' || w === '--print');
+  if (i < 0) return null;
+  let j = i + 1;
+  while (j < words.length && words[j][0] !== '-') j++;
+  return { prompt: j > i + 1 ? oneLine(words.slice(i + 1, j).join(' '), 400) : null, kept: !words.includes('--no-session-persistence') };
+}
+
 function fallbackDesc(pid) {
   const cmd = cmdOf(pid);
   if (cmd == null) return null;
@@ -1155,6 +1198,7 @@ function shellViews(S, now) {
       startedAt: k.startedAt || (proc && proc.start) || null,
       doneAt,
       exit: end ? end.exit : null,
+      why: end ? exitWhy(end.exit, k.timed) : null,
       summary: end ? end.summary : null,
       pid: proc ? Number(proc.pid) : null,
     });
@@ -1263,7 +1307,6 @@ function agentStatus(S, a, now, shellOwners, blocked) {
   }
   if (!S.alive) return { state: 'died', reason: 'The session process ended', doneAt: S.deadAt || lastAt };
   if (S.reg.startedAt && lastAt < S.reg.startedAt - 2000) {
-    cutPending(c, S.reg.startedAt);
     return { state: 'died', reason: 'Lost when the session restarted', doneAt: S.reg.startedAt };
   }
   const sc = S.conv;
@@ -1496,7 +1539,7 @@ function sessionView(S, now, agents, workflows, shells, blocked) {
     if (c.interruptedAt && c.interruptedAt >= c.promptAt) reason = 'You interrupted it';
   } else {
     state = 'working';
-    act = agentNow(c) || { label: 'Starting', since: reg.statusUpdatedAt || now };
+    act = agentNow(c) || (S.headless && !S.headless.kept ? { label: 'Headless run, no transcript', since: reg.startedAt || now } : { label: 'Starting', since: reg.statusUpdatedAt || now });
     const hasProc = [...S.procs.values()].some((p) => p.start >= (c.lastAt || 0) - 3000);
     trouble = troubleOf(c, now, blocked, hasProc);
   }
@@ -1528,7 +1571,8 @@ function sessionView(S, now, agents, workflows, shells, blocked) {
     turnStartedAt: c.promptAt || null,
     act,
     steps: c.steps,
-    prompt: c.lastPromptEntry || (c.prompt ? oneLine(c.prompt, 400) : null),
+    prompt: c.lastPromptEntry || (c.prompt ? oneLine(c.prompt, 400) : null) || (S.headless && S.headless.prompt) || null,
+    headless: S.headless ? { kept: S.headless.kept } : null,
     said: c.said,
     lastWrite,
     recent: c.recent.slice(-6).reverse(),
@@ -1560,7 +1604,7 @@ function attentionFor(v, now) {
     if ((w.state === 'failed' || w.state === 'died') && now - (w.doneAt || now) < ATTENTION_MS) add('error', 'w:' + sid + ':' + w.runId, w.name, w.reason, w.doneAt);
   }
   for (const t of v.shells) {
-    if (t.state === 'failed') add('warn', 't:' + sid + ':' + t.id, t.desc, 'Exited with code ' + (t.exit != null ? t.exit : '?'), t.doneAt);
+    if (t.state === 'failed') add('warn', 't:' + sid + ':' + t.id, t.desc, (t.why ? t.why + ' (exit ' + t.exit + ')' : 'Exited with code ' + (t.exit != null ? t.exit : '?')), t.doneAt);
     if (t.state === 'died') add('warn', 't:' + sid + ':' + t.id, t.desc, 'Killed with the session', t.doneAt);
   }
   return out;
@@ -1581,10 +1625,14 @@ function pollSession(S, now) {
     if (!S.alive) S.readDead = true;
   }
   if (S.dir) readAgents(S, now);
-  if (!S.alive && !S.cut) {
+  if (!S.alive && !S.cut && S.tail) {
     S.cut = true;
-    cutPending(S.conv, S.deadAt || now);
-    for (const a of S.agents.values()) if (a.conv) cutPending(a.conv, S.deadAt || now);
+    cutPending(S.conv, Math.max(S.deadAt || now, S.conv.lastAt || 0));
+    for (const a of S.agents.values()) if (a.conv) cutPending(a.conv, Math.max(S.deadAt || now, a.conv.lastAt || 0));
+  }
+  if (S.alive && S.reg.startedAt) {
+    cutBefore(S.conv, S.reg.startedAt);
+    for (const a of S.agents.values()) if (a.conv) cutBefore(a.conv, S.reg.startedAt);
   }
   const workflows = S.dir ? pollWorkflows(S, now) : [];
   if (S.alive) scanProcs(S);
@@ -1648,6 +1696,7 @@ function poll() {
       S.reg = r.reg;
       S.alive = r.alive;
       S.mt = r.mt;
+      if (S.alive && S.headlessPid !== r.reg.pid) { S.headless = headlessOf(r.reg.pid); S.headlessPid = r.reg.pid; }
       const v = pollSession(S, now);
       if (!S.alive) {
         if (!S.firstSeenDead && now - S.deadAt < DEATH_GRACE_MS) continue;
