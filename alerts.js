@@ -57,6 +57,7 @@
     try { n = new Notification(head, { body, tag }); } catch (e) { return; }
     n.onclick = () => {
       window.focus();
+      closeMenu(false);
       if (node && window.OV) window.OV.show(node);
       n.close();
     };
@@ -67,9 +68,9 @@
     return a.node.startsWith('s:') ? a.node + '|' + a.since : a.node;
   }
   const WAIT_TEXT = { 'permission prompt': 'Waiting for your permission', 'input needed': 'Waiting for your answer' };
-  function needOf(s, attention) {
-    const row = attention.find((a) => a.level === 'needs' && a.node === 's:' + s.id);
-    return { level: 'needs', node: 's:' + s.id, title: s.name, text: row ? row.text : WAIT_TEXT[s.waiting.for] || 'Waiting for you' };
+  // the board's needs row can be a guess about another call, so its text is not quoted
+  function needOf(s) {
+    return { level: 'needs', node: 's:' + s.id, title: s.name, text: WAIT_TEXT[s.waiting.for] || 'Waiting for you' };
   }
   function headOf(a) { return a.title + (a.session && a.session !== a.title ? ' · ' + a.session : ''); }
 
@@ -127,7 +128,7 @@
     const attention = snap.attention || [];
     for (const s of asking) {
       const k = 'needs|' + s.id + '|' + s.waiting.since;
-      if (!baseline && !seen.has(k) && prefs.needs) fresh.push(Object.assign({ key: k }, needOf(s, attention)));
+      if (!baseline && !seen.has(k) && prefs.needs) fresh.push(Object.assign({ key: k }, needOf(s)));
       seen.set(k, t);
     }
     for (const a of attention) {
