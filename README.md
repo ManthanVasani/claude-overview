@@ -51,7 +51,7 @@ Or clone this repository and start it in the background from its folder:
 - Click a card to see what it is doing, what it has touched and what failed.
 - The timeline at the bottom shows every tool call: 15m, 1h, 3h, or Live. T folds it away.
 - Usage, or the U key, opens token totals by day, model, session and folder, and the plan limits of each cswap account.
-- The tab title counts the sessions that need you. The bell turns on desktop alerts for when the page is not in front:
+- The tab title counts the sessions Claude Code reports as waiting for you. The bell turns on desktop alerts for when the page is not in front:
   a session needs you, something fails or stops and, if you tick it, a session finishes its turn. Clicking an alert
   opens that card. An alert can quote a command or what the session last said, so it can show on your lock screen.
 - A reload keeps how you left it: the zoom (and the scroll, in a window of the same size), the open panel, expanded

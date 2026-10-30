@@ -26,7 +26,7 @@
 
   function load() {
     let p = null;
-    try { p = JSON.parse(localStorage.getItem(PREFS_KEY)); } catch (e) { /* storage unavailable */ }
+    try { p = JSON.parse(localStorage.getItem(PREFS_KEY)); } catch (e) { /* storage unavailable or corrupt */ }
     return Object.assign({ on: false, needs: true, problems: true, turns: false }, p && typeof p === 'object' ? p : {});
   }
   function save() {
@@ -34,7 +34,7 @@
   }
   function permission() { return supported ? Notification.permission : 'unsupported'; }
   function live() { return prefs.on && permission() === 'granted'; }
-  // the page in front already shows everything an alert would say
+  // the page in front already shows what an alert would say
   function armed() { return live() && !document.hasFocus(); }
 
   function dot(color) {
@@ -63,12 +63,14 @@
   }
 
   function keyOf(a) {
-    // an agent's permission prompt also puts its session into needs-you, with the same start time
-    if (a.level === 'needs') return 'needs|' + a.sid + '|' + a.since;
     // an agent's end time can move
     return a.node.startsWith('s:') ? a.node + '|' + a.since : a.node;
   }
-  function wanted(a) { return a.level === 'needs' ? prefs.needs : prefs.problems; }
+  const WAIT_TEXT = { 'permission prompt': 'Waiting for your permission', 'input needed': 'Waiting for your answer' };
+  function needOf(s, attention) {
+    const row = attention.find((a) => a.level === 'needs' && a.node === 's:' + s.id);
+    return { level: 'needs', node: 's:' + s.id, title: s.name, text: row ? row.text : WAIT_TEXT[s.waiting.for] || 'Waiting for you' };
+  }
   function headOf(a) { return a.title + (a.session && a.session !== a.title ? ' · ' + a.session : ''); }
 
   function announce(list) {
@@ -77,10 +79,10 @@
       const needs = list.filter((a) => a.level === 'needs').length;
       const rest = list.length - needs;
       const head = needs ? needs + (needs === 1 ? ' needs you' : ' need you') + (rest ? ', ' + rest + ' more ' + (rest === 1 ? 'needs' : 'need') + ' attention' : '') : list.length + ' new problems';
-      notify('burst:' + keyOf(list[0]), head, list.slice(0, 3).map(headOf).join('\n'), list[0].node);
+      notify('burst:' + list[0].key, head, list.slice(0, 3).map(headOf).join('\n'), list[0].node);
       return;
     }
-    for (const a of list) notify(keyOf(a), (a.level === 'needs' ? 'Needs you: ' : '') + headOf(a), a.text, a.node);
+    for (const a of list) notify(a.key, (a.level === 'needs' ? 'Needs you: ' : '') + headOf(a), a.text, a.node);
   }
 
   function watchTurns(list) {
@@ -112,29 +114,36 @@
   function onSnap(snap) {
     if (!snap) return;
     latest = snap;
-    setTitle((snap.totals || {}).needsYou);
+    const asking = (snap.sessions || []).filter((s) => s.alive && s.waiting && !s.headless);
+    setTitle(asking.length);
     if (btn.classList.contains('on') !== live()) paint();
     const baseline = !seen;
     if (baseline) seen = new Map();
-    // a restarted server dates the deaths it finds again, so only its needs rows can be told from old ones
+    // a restarted server dates the deaths it finds again, so their rows look new
     const restarted = snap.boot !== boot;
     boot = snap.boot;
     const t = Date.now();
     const fresh = [];
-    for (const a of snap.attention || []) {
-      // not kept in seen: a retrying agent's quiet row has the key its failure will have
-      if (a.quiet) continue;
-      const k = keyOf(a);
-      if (!baseline && !seen.has(k) && wanted(a) && (!restarted || a.level === 'needs')) fresh.push(a);
+    const attention = snap.attention || [];
+    for (const s of asking) {
+      const k = 'needs|' + s.id + '|' + s.waiting.since;
+      if (!baseline && !seen.has(k) && prefs.needs) fresh.push(Object.assign({ key: k }, needOf(s, attention)));
       seen.set(k, t);
     }
-    // aged from the snapshot before: a quiet board can send nothing for longer than this, and then miss a row once
+    for (const a of attention) {
+      // the board's needs rows can be a guess from timing, and an agent's quiet row has the key its failure will have
+      if (a.quiet || a.level === 'needs') continue;
+      const k = keyOf(a);
+      if (!baseline && !seen.has(k) && prefs.problems && !restarted) fresh.push(Object.assign({ key: k }, a));
+      seen.set(k, t);
+    }
+    // on a quiet board the last snapshot can be hours old, so a row must not be forgotten the moment it drops out
     for (const [k, at] of seen) if (lastSnap - at > FORGET_MS) seen.delete(k);
     lastSnap = t;
     announce(fresh);
     watchTurns(snap.sessions || []);
   }
-  // once the stream is gone, neither the last count nor an all-clear is true
+  // once the stream is gone, neither the last count nor an all-clear can be trusted
   function onLost() { setTitle('?'); }
 
   function paint() {

@@ -1037,11 +1037,15 @@ function noteRunningTasks(S, now, used) {
   }
 }
 
+// whole arguments, so a prompt that mentions -p is not the flag; ps only gives the joined line
+function argsOf(pid) {
+  if (!PROC_FS) return (cmdOf(pid) || '').split(' ').filter(Boolean);
+  try { return fs.readFileSync('/proc/' + pid + '/cmdline', 'utf8').split('\0').filter(Boolean); } catch { return []; }
+}
+
 // with --no-session-persistence a claude -p run writes no transcript
 function headlessOf(pid) {
-  const cmd = cmdOf(pid);
-  if (!cmd) return null;
-  const words = cmd.split(' ').filter(Boolean);
+  const words = argsOf(pid);
   const i = words.findIndex((w) => w === '-p' || w === '--print');
   if (i < 0) return null;
   let j = i + 1;
@@ -1592,6 +1596,8 @@ function sessionView(S, now, agents, workflows, shells, blocked) {
     steps: c.steps,
     prompt: c.lastPromptEntry || (c.prompt ? oneLine(c.prompt, 400) : null) || (S.headless && S.headless.prompt) || null,
     headless: S.headless ? { kept: S.headless.kept } : null,
+    // Claude Code reports a screen you opened, such as /model, as a dialog too
+    waiting: S.alive && reg.status === 'waiting' && reg.waitingFor !== 'dialog open' ? { for: reg.waitingFor || null, since: reg.statusUpdatedAt || null } : null,
     said: c.said,
     lastWrite,
     recent: c.recent.slice(-6).reverse(),
@@ -1606,13 +1612,12 @@ function attentionFor(v, now) {
   const out = [];
   const sid = v.id;
   // no desktop alert for quiet rows: nobody answers a headless run, and a nested session's problems are its parent's
-  const add = (level, node, title, text, since, quiet) => out.push({ level, sid, node, title, text, since: since || null, session: v.name, quiet: !!(quiet || v.headless || (v.parentSid && level !== 'needs')) });
-  const lostWork = [...v.agents, ...v.workflows].some((x) => x.state === 'died' && (!x.doneAt || x.doneAt >= v.since));
+  const add = (level, node, title, text, since, quiet) => out.push({ level, sid, node, title, text, since: since || null, session: v.name, quiet: !!(quiet || v.headless || v.parentSid) });
   if (v.state === 'needs-you') add('needs', 's:' + sid, v.name, v.act ? v.act.label : 'Waiting for you', v.act && v.act.since);
   if (v.state === 'error') add('error', 's:' + sid, v.name, 'Stopped: ' + v.reason, v.since);
   if (v.state === 'retrying') add('error', 's:' + sid, v.name, v.trouble.text, v.trouble.since, true);
   if (v.state === 'died' && now - v.lastWrite < ATTENTION_MS * 6) add('error', 's:' + sid, v.name, v.reason + ' (pid ' + v.pid + ')', v.since);
-  if (v.state === 'ended' && now - v.lastWrite < ATTENTION_MS) add('warn', 's:' + sid, v.name, v.reason, v.since, !lostWork);
+  if (v.state === 'ended' && now - v.lastWrite < ATTENTION_MS) add('warn', 's:' + sid, v.name, v.reason, v.since, ![...v.agents, ...v.workflows].some((x) => x.state === 'died'));
   if (v.trouble && v.trouble.kind === 'stalled') add('warn', 's:' + sid, v.name, 'No activity while working', v.trouble.since, true);
   for (const a of v.agents) {
     const node = 'a:' + sid + ':' + a.id;
