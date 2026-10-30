@@ -77,7 +77,7 @@ function save() {
   const now = Date.now();
   for (const p in files) {
     const r = files[p];
-    // a file not fully read still needs them, however old it is
+    // the unread part can hold later lines of a message already counted
     if (r.recent.length && r.off >= r.size && now - r.mtime > RECENT_IDLE_MS) r.recent = [];
   }
   // two servers on different ports can share the index
