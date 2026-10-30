@@ -43,7 +43,7 @@ function readFiles(file) {
 }
 
 function load() {
-  // a save cut off by a kill leaves its temporary file behind
+  // a save that does not finish leaves its temporary file behind
   try {
     const dir = path.dirname(INDEX);
     const pre = path.basename(INDEX) + '.';
@@ -55,7 +55,7 @@ function load() {
   files = readFiles(INDEX);
   if (!files) {
     files = {};
-    // it can be the only record of deleted transcripts, so a file this copy cannot read is kept aside
+    // an unreadable index can be the only record of deleted transcripts
     if (fs.existsSync(INDEX)) {
       const aside = INDEX + '.unreadable-' + Date.now();
       try {
@@ -64,7 +64,7 @@ function load() {
       } catch (e) { parentPort.postMessage({ notice: 'Could not keep the unreadable usage totals: ' + e.message }); }
     }
   }
-  // a clone's old index holds totals of transcripts deleted since; only this folder's rows belong here
+  // a clone's old index holds totals of transcripts deleted since, and may be from another Claude folder
   const seed = readFiles(SEED) || {};
   for (const p in seed) {
     const had = files[p];
@@ -82,7 +82,7 @@ function save() {
   // two servers on different ports can share the index
   const tmp = INDEX + '.' + process.pid + '.tmp';
   try {
-    // it holds project paths and session titles, so only its owner may read it
+    // it holds project paths and session titles
     fs.mkdirSync(path.dirname(INDEX), { recursive: true, mode: 0o700 });
     fs.writeFileSync(tmp, JSON.stringify({ v: VERSION, files }), { mode: 0o600 });
     fs.renameSync(tmp, INDEX);

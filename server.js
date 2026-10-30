@@ -34,7 +34,7 @@ if (arg) {
   process.exit(0);
 }
 
-// npx gives it no nice, and a dashboard should not compete with the sessions it watches
+// npm gives it no nice, and a dashboard should not compete with the sessions it watches
 try { if (os.getPriority() < 10) os.setPriority(10); } catch (e) { /* it keeps the priority it started with */ }
 
 const USAGE_INDEX = usageIndexFile();
