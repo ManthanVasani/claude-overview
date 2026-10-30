@@ -1,0 +1,42 @@
+{
+  "name": "claude-overview",
+  "version": "0.1.0",
+  "description": "A live dashboard for every Claude Code session on your machine: agents, workflows, background shells, tool calls and token usage. Zero tokens, Claude data read-only, no npm dependencies.",
+  "keywords": [
+    "claude-code",
+    "claude",
+    "anthropic",
+    "ai-agents",
+    "dashboard",
+    "developer-tools",
+    "monitoring",
+    "observability"
+  ],
+  "homepage": "https://github.com/ManthanVasani/claude-overview#readme",
+  "bugs": "https://github.com/ManthanVasani/claude-overview/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ManthanVasani/claude-overview.git"
+  },
+  "license": "MIT",
+  "author": "Manthan Vasani",
+  "bin": {
+    "claude-overview": "server.js"
+  },
+  "files": [
+    "server.js",
+    "usage-scan.js",
+    "index.html",
+    "map.js",
+    "live.js",
+    "usage-ui.js",
+    "vendor/"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "os": [
+    "linux",
+    "darwin"
+  ]
+}

@@ -7,6 +7,7 @@ const { parentPort, workerData } = require('worker_threads');
 
 const ROOT = workerData.root;
 const INDEX = workerData.index;
+const SEED = workerData.seed;
 const VERSION = 1;
 const SLICE = 8 << 20;
 const MAX_LINE = 128 << 20;
@@ -19,6 +20,7 @@ const SAVE_IDLE_MS = 10 * 60000;
 const HOURS_KEEP_MS = 8 * 864e5;
 const RECENT_IDS = 24;
 const RECENT_IDLE_MS = 3600000;
+const TMP_STALE_MS = 3600000;
 
 let files = {};
 let queue = [];
@@ -27,16 +29,49 @@ let lastReport = 0;
 let lastSave = Date.now();
 let changed = true;
 let unsaved = false;
+let scanned = false;
 
 function pad(n) { return n < 10 ? '0' + n : String(n); }
 function dayKey(t) { const d = new Date(t); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
 function hourKey(t) { const d = new Date(t); return dayKey(t) + 'T' + pad(d.getHours()); }
 
-function load() {
+function readFiles(file) {
   try {
-    const d = JSON.parse(fs.readFileSync(INDEX, 'utf8'));
-    if (d && d.v === VERSION && d.files) files = d.files;
-  } catch (e) { /* first run or unreadable: start over */ }
+    const d = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return d && d.v === VERSION && d.files ? d.files : null;
+  } catch (e) { /* first run, no clone index, or unreadable */ return null; }
+}
+
+function load() {
+  // a save that does not finish leaves its temporary file behind
+  try {
+    const dir = path.dirname(INDEX);
+    const pre = path.basename(INDEX) + '.';
+    for (const f of fs.readdirSync(dir)) {
+      const p = path.join(dir, f);
+      if (f.startsWith(pre) && f.endsWith('.tmp') && Date.now() - fs.statSync(p).mtimeMs > TMP_STALE_MS) fs.unlinkSync(p);
+    }
+  } catch (e) { /* left for the next start */ }
+  files = readFiles(INDEX);
+  if (!files) {
+    files = {};
+    // an unreadable index can be the only record of deleted transcripts
+    if (fs.existsSync(INDEX)) {
+      const aside = INDEX + '.unreadable-' + Date.now();
+      try {
+        fs.renameSync(INDEX, aside);
+        parentPort.postMessage({ notice: 'Could not read the usage totals, so they start again. The old file is kept at ' + aside });
+      } catch (e) { parentPort.postMessage({ notice: 'Could not keep the unreadable usage totals: ' + e.message }); }
+    }
+  }
+  // a clone's old index holds totals of transcripts deleted since, and may be from another Claude folder
+  const seed = readFiles(SEED) || {};
+  for (const p in seed) {
+    const had = files[p];
+    if (!p.startsWith(ROOT + path.sep) || (had && (had.ino !== seed[p].ino || had.off >= seed[p].off))) continue;
+    files[p] = seed[p];
+    unsaved = true;
+  }
 }
 function save() {
   const now = Date.now();
@@ -44,12 +79,15 @@ function save() {
     const r = files[p];
     if (r.recent.length && now - r.mtime > RECENT_IDLE_MS) r.recent = [];
   }
-  const tmp = INDEX + '.tmp';
+  // two servers on different ports can share the index
+  const tmp = INDEX + '.' + process.pid + '.tmp';
   try {
-    fs.writeFileSync(tmp, JSON.stringify({ v: VERSION, files }));
+    // it holds project paths and session titles
+    fs.mkdirSync(path.dirname(INDEX), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(tmp, JSON.stringify({ v: VERSION, files }), { mode: 0o600 });
     fs.renameSync(tmp, INDEX);
     unsaved = false;
-  } catch (e) { /* the next save tries again */ }
+  } catch (e) { parentPort.postMessage({ notice: 'Could not save the usage totals: ' + e.message }); }
   lastSave = now;
 }
 
@@ -271,7 +309,10 @@ function tick() {
     lastReport = now;
     changed = false;
   }
-  if (unsaved && now - lastSave > (queue.length ? SAVE_BUSY_MS : SAVE_IDLE_MS)) save();
+  // a foreground run is often stopped soon after its first scan ends
+  const first = !scanned && !queue.length;
+  if (first) scanned = true;
+  if (unsaved && (first || now - lastSave > (queue.length ? SAVE_BUSY_MS : SAVE_IDLE_MS))) save();
   setTimeout(tick, queue.length ? 25 : 2000);
 }
 
