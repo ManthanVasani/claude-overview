@@ -11,23 +11,28 @@ The screenshots show made-up projects.
 ## Requirements
 
 - Linux, WSL or macOS. macOS support has not been tested on a real Mac yet.
-- [Node.js](https://nodejs.org). There are no packages to install.
+- [Node.js](https://nodejs.org) 20 or later. It has no npm dependencies.
 - Claude Code, in VS Code or in the terminal.
 - Optional: [cswap](https://github.com/realiti4/claude-swap), to show the plan limits of each account.
 
 ## Install
 
-Clone or download this repository, then start it from its folder:
+```
+npx claude-overview
+```
+
+Then open http://127.0.0.1:3100/. It runs until you press Ctrl + C. `npm install -g claude-overview` keeps it
+installed, so `claude-overview` starts it.
+
+Or clone this repository and start it in the background from its folder:
 
 ```
 ./overview start
 ```
 
-Then open http://127.0.0.1:3100/.
-
 - `./overview status` and `./overview stop` do what they say.
-- To use another port, set `CLAUDE_OVERVIEW_PORT` before `./overview start`.
-- It does not start again by itself after a restart: run `./overview start`.
+- To use another port, set `CLAUDE_OVERVIEW_PORT` before starting it.
+- It does not start again by itself after a restart.
 
 ## Using it
 
@@ -53,7 +58,9 @@ Then open http://127.0.0.1:3100/.
 - cswap's account list and usage cache, when cswap is installed. Never its credentials.
 
 It never changes any of them. The server listens on 127.0.0.1 only and answers only GET requests. Token totals are
-kept in `usage-index.json` beside the code; the first start reads your whole transcript history once, at low priority.
+kept in `~/.local/state/claude-overview` (`$XDG_STATE_HOME/claude-overview` when that is set, and
+`~/Library/Application Support/claude-overview` on macOS); the first start reads your whole transcript history once, at
+low priority.
 
 Token totals come from the transcripts on this machine. Runs started with `claude -p --no-session-persistence`
 write no transcript, so they are not counted.
