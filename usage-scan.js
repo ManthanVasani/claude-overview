@@ -77,7 +77,8 @@ function save() {
   const now = Date.now();
   for (const p in files) {
     const r = files[p];
-    if (r.recent.length && now - r.mtime > RECENT_IDLE_MS) r.recent = [];
+    // the unread part can hold later lines of a message already counted
+    if (r.recent.length && r.off >= r.size && now - r.mtime > RECENT_IDLE_MS) r.recent = [];
   }
   // two servers on different ports can share the index
   const tmp = INDEX + '.' + process.pid + '.tmp';
@@ -209,13 +210,15 @@ function readSlice(p) {
   let fd;
   try { fd = fs.openSync(p, 'r'); } catch (e) { r.gone = true; return; }
   try {
-    const size = fs.fstatSync(fd).size;
+    const st = fs.fstatSync(fd);
+    const size = st.size;
     if (size < r.off) {
       // rewritten shorter: count it again from the start
       Object.assign(r, { off: 0, days: {}, hours: {}, recent: [], title: '', tk: 0 });
       changed = true;
     }
     r.size = size;
+    r.mtime = st.mtimeMs;
     if (size <= r.off) return;
     let want = Math.min(SLICE, size - r.off);
     let buf;
