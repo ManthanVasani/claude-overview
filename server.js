@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
+const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
 const os = require('os');
@@ -13,12 +14,30 @@ const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR || path.join(HOME, '.claude');
 const SESSIONS_DIR = path.join(CLAUDE_DIR, 'sessions');
 const PROJECTS_DIR = path.join(CLAUDE_DIR, 'projects');
 const PAGE = path.join(__dirname, 'index.html');
-const USAGE_INDEX = path.join(__dirname, 'usage-index.json');
 const CSWAP_DIR = cswapDir();
 // Linux reads processes from /proc; macOS has none, so there one ps listing per poll stands in for it.
 const PROC_FS = process.platform === 'linux';
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.CLAUDE_OVERVIEW_PORT || 3100);
+
+if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+  console.error('CLAUDE_OVERVIEW_PORT must be a port number from 1 to 65535.');
+  process.exit(1);
+}
+
+const arg = process.argv[2];
+if (arg) {
+  const usage = 'Usage: claude-overview\nServes the overview on http://' + HOST + ':' + PORT + '/ until Ctrl + C. CLAUDE_OVERVIEW_PORT sets the port.';
+  if (arg === '--version' || arg === '-v') console.log(require('./package.json').version);
+  else if (arg === '--help' || arg === '-h') console.log(usage);
+  else { console.error('Unknown argument: ' + arg + '\n' + usage); process.exit(1); }
+  process.exit(0);
+}
+
+// npm gives it no nice, and a dashboard should not compete with the sessions it watches
+try { if (os.getPriority() < 10) os.setPriority(10); } catch (e) { /* it keeps the priority it started with */ }
+
+const USAGE_INDEX = usageIndexFile();
 
 const MIN = 60000;
 const HOUR = 60 * MIN;
@@ -1773,18 +1792,34 @@ let usageSummary = null;
 function startUsage() {
   let w;
   try {
-    w = new Worker(path.join(__dirname, 'usage-scan.js'), { workerData: { root: PROJECTS_DIR, index: USAGE_INDEX } });
+    w = new Worker(path.join(__dirname, 'usage-scan.js'), { workerData: { root: PROJECTS_DIR, index: USAGE_INDEX, seed: path.join(__dirname, 'usage-index.json') } });
   } catch (e) { logOnce(e); return; }
-  w.on('message', (m) => { usageSummary = m; });
+  w.on('message', (m) => {
+    if (m.notice) logOnce(m.notice);
+    else usageSummary = m;
+  });
   w.on('error', logOnce);
   w.on('exit', () => setTimeout(startUsage, MIN));
+}
+
+// the XDG spec ignores a relative path
+function xdgDir(name, fallback) {
+  const xdg = (process.env[name] || '').replace(/^~(?=$|\/)/, () => HOME);
+  return path.isAbsolute(xdg) ? xdg : path.join(HOME, fallback);
+}
+
+// npm can install the code where its user cannot write, and the index keeps the totals of deleted transcripts
+function usageIndexFile() {
+  const base = process.platform === 'darwin' ? path.join(HOME, 'Library', 'Application Support') : xdgDir('XDG_STATE_HOME', path.join('.local', 'state'));
+  // servers reading different Claude folders must not mix their totals
+  const folder = crypto.createHash('sha1').update(path.resolve(PROJECTS_DIR)).digest('hex').slice(0, 12);
+  return path.join(base, 'claude-overview', 'usage-index-' + folder + '.json');
 }
 
 // cswap keeps its files under the XDG data dir on Linux and in ~/.claude-swap-backup on macOS
 function cswapDir() {
   if (process.platform !== 'linux') return path.join(HOME, '.claude-swap-backup');
-  const xdg = (process.env.XDG_DATA_HOME || '').replace(/^~(?=$|\/)/, HOME);
-  return path.join(path.isAbsolute(xdg) ? xdg : path.join(HOME, '.local', 'share'), 'claude-swap');
+  return path.join(xdgDir('XDG_DATA_HOME', path.join('.local', 'share')), 'claude-swap');
 }
 
 // cswap's account list, its last usage reading per account and its last switch; its credentials are never read.
@@ -1940,6 +1975,12 @@ const server = http.createServer((req, res) => {
 setInterval(() => {
   for (const res of clients) res.write('event: tick\ndata: ' + Date.now() + '\n\n');
 }, 10000);
+
+server.on('error', (e) => {
+  if (e.code === 'EADDRINUSE') console.error(new Date().toISOString(), 'Port ' + PORT + ' is already in use, maybe by another copy of claude-overview. Set CLAUDE_OVERVIEW_PORT to use another port.');
+  else console.error(new Date().toISOString(), e.message);
+  process.exit(1);
+});
 
 server.listen(PORT, HOST, () => {
   console.log(new Date().toISOString(), 'Claude overview on http://' + HOST + ':' + PORT + '/');
