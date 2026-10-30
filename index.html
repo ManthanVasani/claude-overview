@@ -95,11 +95,11 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
   font-size: 12px;
   color: var(--text-3);
   white-space: nowrap;
-  max-width: calc(100vw - var(--rail) - 384px - var(--ic-rail) - var(--ic-full));
+  max-width: calc(100vw - var(--rail) - 424px - var(--ic-rail) - var(--ic-full));
   overflow: hidden;
   text-overflow: ellipsis;
 }
-@media (min-width: 641px) { body.panel-open .hud { max-width: calc(100vw - var(--panel) - 384px - var(--ic-rail) - var(--ic-full)); } }
+@media (min-width: 641px) { body.panel-open .hud { max-width: calc(100vw - var(--panel) - 424px - var(--ic-rail) - var(--ic-full)); } }
 body:has(#rail-btn[hidden]) { --ic-rail: 0px; }
 body:has(#full-screen[hidden]) { --ic-full: 0px; }
 .hud b { font: 600 12px var(--mono); color: var(--text); margin-right: 4px; }
@@ -700,6 +700,22 @@ body.panel-open .r-alerts .alerts { right: auto; }
 .u-bar { height: 5px; border-radius: 3px; background: rgba(148, 163, 184, .1); overflow: hidden; }
 .u-bar i { display: block; height: 100%; border-radius: 3px; background: var(--wait); min-width: 2px; }
 
+/* desktop alerts */
+.ctrl button.bell.on { color: var(--work); border-color: rgba(52, 211, 153, .45); background: rgba(52, 211, 153, .1); }
+.al-menu { z-index: 25; width: min(300px, calc(100vw - 16px)); padding: 10px 12px 8px; border-radius: 12px; }
+.am-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 8px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
+.am-h { font-weight: 600; font-size: 12.5px; color: var(--text); }
+.am-sw { position: relative; flex: none; width: 34px; height: 20px; padding: 0; border-radius: 999px; border: 1px solid var(--border-hi); background: rgba(148, 163, 184, .16); cursor: pointer; transition: background .15s, border-color .15s; }
+.am-sw i { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--text-2); transition: transform .15s, background .15s; }
+.am-sw[aria-checked="true"] { background: rgba(52, 211, 153, .3); border-color: rgba(52, 211, 153, .6); }
+.am-sw[aria-checked="true"] i { transform: translateX(14px); background: var(--work); }
+.am-sw:disabled { cursor: default; }
+.am-sw:focus-visible, .am-opt input:focus-visible { outline: 2px solid var(--wait); outline-offset: 2px; }
+.am-opt { display: flex; align-items: center; gap: 9px; padding: 5px 2px; font-size: 12.5px; color: var(--text-2); cursor: pointer; }
+.am-opt:hover { color: var(--text); }
+.am-opt input { margin: 0; accent-color: var(--work); }
+.am-msg { margin: 6px 0 2px; font-size: 12px; line-height: 1.4; color: var(--turn); }
+
 @keyframes livePulse { 50% { opacity: .45; } }
 @keyframes wireFlow { to { stroke-dashoffset: -12; } }
 @keyframes feedIn { from { opacity: 0; transform: translateX(14px); background: color-mix(in srgb, var(--kc) 22%, transparent); } }
@@ -714,6 +730,8 @@ body.panel-open .r-alerts .alerts { right: auto; }
 
 @media (max-width: 640px) {
   .hud { max-width: calc(100vw - 32px); bottom: calc(var(--dock) + 54px); }
+  /* the bottom row has no room for it on a phone */
+  .ctrl button.bell { display: none; }
   .hud .k-low { display: none; }
   .banner { max-width: calc(100vw - 32px); top: auto; bottom: calc(var(--dock) + 94px); }
   body.panel-open .alerts { display: none; }
@@ -737,8 +755,16 @@ body.panel-open .r-alerts .alerts { right: auto; }
   <button type="button" id="only-active" aria-pressed="false" title="Hide finished agents, shells and workflows">Active only</button>
   <div class="grp"><button type="button" id="zoom-out" title="Zoom out (Ctrl + − or Ctrl + scroll)" aria-label="Zoom out">−</button><button type="button" id="zoom-pct" class="pct" title="Full size (0)">100%</button><button type="button" id="zoom-in" title="Zoom in (Ctrl + = or Ctrl + scroll)" aria-label="Zoom in">+</button></div>
   <button type="button" id="fit" aria-pressed="false" title="Fit the board to the window (F)">Fit</button>
+  <button type="button" id="alerts-btn" class="ic bell" aria-haspopup="dialog" aria-expanded="false" aria-controls="alert-menu" aria-label="Desktop alerts" title="Desktop alerts: off"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.2a3.6 3.6 0 0 0-3.6 3.6v2.6L3 10.6v.9h10v-.9l-1.4-2.2V5.8A3.6 3.6 0 0 0 8 2.2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6.6 13.1a1.5 1.5 0 0 0 2.8 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>
   <button type="button" id="rail-btn" class="ic" aria-pressed="true" aria-label="Side column" title="Hide the side column (S)" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><rect class="col" x="9.5" y="3.5" width="4" height="9" rx=".5"/><path d="M9.5 3v10" stroke="currentColor" stroke-width="1.5"/></svg></button>
   <button type="button" id="full-screen" class="ic" aria-pressed="false" aria-label="Full screen" title="Full screen (Shift + F)"><svg class="fs-in" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><svg class="fs-out" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.5V6H2.5M13.5 6H10V2.5M10 13.5V10h3.5M2.5 10H6v3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+</div>
+<div class="float al-menu" id="alert-menu" role="dialog" aria-label="Desktop alerts" hidden>
+  <div class="am-row"><span class="am-h" id="am-h">Desktop alerts</span><button type="button" class="am-sw" role="switch" aria-checked="false" aria-labelledby="am-h" data-switch><i></i></button></div>
+  <label class="am-opt"><input type="checkbox" data-pref="needs">A session needs you</label>
+  <label class="am-opt"><input type="checkbox" data-pref="problems">Something fails or stops</label>
+  <label class="am-opt"><input type="checkbox" data-pref="turns">A session finishes its turn</label>
+  <p class="am-msg" hidden></p>
 </div>
 <aside class="rail" id="rail" aria-label="What the sessions are touching">
   <div class="r-alerts" id="r-alerts"></div>
@@ -771,5 +797,6 @@ body.panel-open .r-alerts .alerts { right: auto; }
 <script src="/map.js"></script>
 <script src="/live.js"></script>
 <script src="/usage-ui.js"></script>
+<script src="/alerts.js"></script>
 </body>
 </html>
