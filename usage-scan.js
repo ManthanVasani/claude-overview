@@ -210,13 +210,15 @@ function readSlice(p) {
   let fd;
   try { fd = fs.openSync(p, 'r'); } catch (e) { r.gone = true; return; }
   try {
-    const size = fs.fstatSync(fd).size;
+    const st = fs.fstatSync(fd);
+    const size = st.size;
     if (size < r.off) {
       // rewritten shorter: count it again from the start
       Object.assign(r, { off: 0, days: {}, hours: {}, recent: [], title: '', tk: 0 });
       changed = true;
     }
     r.size = size;
+    r.mtime = st.mtimeMs;
     if (size <= r.off) return;
     let want = Math.min(SLICE, size - r.off);
     let buf;
