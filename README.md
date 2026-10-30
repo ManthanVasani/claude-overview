@@ -4,6 +4,10 @@ A live view of every Claude Code session on your machine: each session with its 
 shells, a timeline of every tool call, the files, servers and sites each session is touching, and your token usage.
 It only reads files Claude Code already writes, so it costs no tokens.
 
+![The board with four sessions, the needs-attention list, what they are touching and the timeline](docs/screenshots/overview.png)
+
+The screenshots show made-up projects.
+
 ## Requirements
 
 - Linux, WSL or macOS. macOS support has not been tested on a real Mac yet.
@@ -32,6 +36,10 @@ Then open http://127.0.0.1:3100/.
 - Click a card to see what it is doing, what it has touched and what failed.
 - The timeline at the bottom shows every tool call: 15m, 1h, 3h, or Live. T folds it away.
 - Usage, or the U key, opens token totals by day, model, session and folder, and the plan limits of each cswap account.
+
+![The detail panel of a running agent](docs/screenshots/details.png)
+
+![The usage drawer with plan limits and a week of tokens](docs/screenshots/usage.png)
 
 ## What it reads
 
