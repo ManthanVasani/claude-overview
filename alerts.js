@@ -20,7 +20,6 @@
   let latest = null;
   let seen = null;
   let boot = null;
-  let lastSnap = 0;
   const states = new Map();
   const settling = new Map();
 
@@ -132,22 +131,24 @@
     boot = snap.boot;
     const t = Date.now();
     const fresh = [];
+    // a quiet board can send nothing for hours, so the hour runs from the first snapshot without the row
+    for (const [k, gone] of seen) {
+      if (!gone) seen.set(k, t);
+      else if (t - gone > FORGET_MS) seen.delete(k);
+    }
     const attention = snap.attention || [];
     for (const s of asking) {
       const k = 'needs|' + s.id + '|' + s.waiting.since;
       if (!baseline && !seen.has(k) && prefs.needs) fresh.push(Object.assign({ key: k }, needOf(s)));
-      seen.set(k, t);
+      seen.set(k, 0);
     }
     for (const a of attention) {
       // the board's needs rows can be a guess from timing, and an agent's quiet row has the key its failure will have
       if (a.quiet || a.level === 'needs') continue;
       const k = keyOf(a);
       if (!baseline && !seen.has(k) && prefs.problems && !restarted) fresh.push(Object.assign({ key: k }, a));
-      seen.set(k, t);
+      seen.set(k, 0);
     }
-    // on a quiet board the last snapshot can be hours old, so a row must not be forgotten the moment it drops out
-    for (const [k, at] of seen) if (lastSnap - at > FORGET_MS) seen.delete(k);
-    lastSnap = t;
     announce(fresh);
     watchTurns(snap.sessions || []);
   }
