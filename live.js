@@ -22,7 +22,7 @@
   for (const k of KINDS) KC[k.id] = k.c;
   const BAD = '#f43f5e';
   const CUT = '#fb923c';
-  const STATE_C = { working: '#34d399', running: '#34d399', 'your-turn': '#fbbf24', 'needs-you': '#fb7185', error: '#f43f5e', died: '#f43f5e', retrying: '#fb923c', ended: '#64748b' };
+  const STATE_C = { working: '#34d399', running: '#34d399', 'your-turn': '#fbbf24', 'needs-you': '#f472b6', error: '#f43f5e', died: '#f43f5e', retrying: '#fb923c', ended: '#64748b' };
   const TABS = { files: 'Files', hosts: 'Servers', web: 'Web', tools: 'Tools' };
   const KEYS = { dock: 'claude-overview-dock', fold: 'claude-overview-dock-folded', span: 'claude-overview-tl-span', hide: 'claude-overview-tl-hide', open: 'claude-overview-tl-open', tab: 'claude-overview-touch-tab' };
   const HEAD_H = 38;
@@ -519,7 +519,7 @@
       ctx.lineTo(x, H);
       ctx.stroke();
       const label = clock(t, stepT < 60e3);
-      ctx.fillStyle = '#7d8a9f';
+      ctx.fillStyle = '#8e9bb1';
       const lw = ctx.measureText(label).width;
       if (x - lw / 2 > px0 - 4 && x + lw / 2 < px1 - 30) ctx.fillText(label, x - lw / 2, AXIS / 2);
     }
@@ -553,7 +553,7 @@
         ctx.arc(indent + 3, cy, 3.5, 0, Math.PI * 2);
         ctx.fill();
         if (row.canOpen) {
-          ctx.fillStyle = '#7d8a9f';
+          ctx.fillStyle = '#8e9bb1';
           ctx.beginPath();
           if (row.isOpen) { ctx.moveTo(G - 14, cy - 2); ctx.lineTo(G - 6, cy - 2); ctx.lineTo(G - 10, cy + 3); }
           else { ctx.moveTo(G - 12, cy - 4); ctx.lineTo(G - 7, cy); ctx.lineTo(G - 12, cy + 4); }
@@ -563,14 +563,14 @@
         const count = G < 200 ? '' : String(row.steps.length);
         ctx.font = '11px ' + getComputedStyle(document.body).fontFamily;
         const cw = ctx.measureText(count).width;
-        ctx.fillStyle = '#7d8a9f';
+        ctx.fillStyle = '#8e9bb1';
         if (count) ctx.fillText(count, G - 20 - cw, cy);
         let failW = 0;
         if (row.fails) {
           // a narrow gutter keeps room for the name
           const f = G < 200 ? '✕' + row.fails : row.fails + ' failed';
           failW = ctx.measureText(f).width + 8;
-          ctx.fillStyle = '#ff9fb0';
+          ctx.fillStyle = '#fca5a5';
           ctx.fillText(f, G - 20 - cw - failW, cy);
         }
         ctx.font = '600 12px ' + getComputedStyle(document.body).fontFamily;
