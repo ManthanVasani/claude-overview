@@ -1,12 +1,19 @@
 # claude-overview
 
+**See every Claude Code session on your machine at once, and which one is waiting on you.**
+
+![Tokens: zero](https://img.shields.io/badge/tokens-zero-2ea043)
+![Access: read-only](https://img.shields.io/badge/access-read--only-2ea043)
+![Listens on 127.0.0.1 only](https://img.shields.io/badge/listens%20on-127.0.0.1%20only-2ea043)
+![npm packages: none](https://img.shields.io/badge/npm%20packages-none-2ea043)
+
+![The board updating live: a session turns pink when it needs you, and clicking an agent opens its details](docs/screenshots/demo.gif)
+
 A live view of every Claude Code session on your machine: each session with its agents, workflows and background
 shells, a timeline of every tool call, the files, servers and sites each session is touching, and your token usage.
 It only reads files Claude Code already writes, so it costs no tokens.
 
-![The board with four sessions, the needs-attention list, what they are touching and the timeline](docs/screenshots/overview.png)
-
-The screenshots show made-up projects.
+The demo and the screenshots show made-up projects.
 
 ## Requirements
 
@@ -40,6 +47,8 @@ Then open http://127.0.0.1:3100/.
 - Usage, or the U key, opens token totals by day, model, session and folder, and the plan limits of each cswap account.
 - A reload keeps how you left it: the zoom (and the scroll, in a window of the same size), the open panel, expanded
   groups, the timeline and the right-hand column.
+
+![The whole board: five sessions, the needs-attention list, what they are touching and the timeline](docs/screenshots/overview.png)
 
 ![The detail panel of a running agent](docs/screenshots/details.png)
 
