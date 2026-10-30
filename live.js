@@ -24,7 +24,7 @@
   const CUT = '#fb923c';
   const STATE_C = { working: '#34d399', running: '#34d399', 'your-turn': '#fbbf24', 'needs-you': '#f472b6', error: '#f43f5e', died: '#f43f5e', retrying: '#fb923c', ended: '#64748b' };
   const TABS = { files: 'Files', hosts: 'Servers', web: 'Web', tools: 'Tools' };
-  const KEYS = { dock: 'claude-overview-dock', fold: 'claude-overview-dock-folded', span: 'claude-overview-tl-span', hide: 'claude-overview-tl-hide', open: 'claude-overview-tl-open', tab: 'claude-overview-touch-tab' };
+  const KEYS = { dock: 'claude-overview-dock-dragged', fold: 'claude-overview-dock-folded', span: 'claude-overview-tl-span', hide: 'claude-overview-tl-hide', open: 'claude-overview-tl-open', tab: 'claude-overview-touch-tab', rail: 'claude-overview-rail-hidden', dockAuto: 'claude-overview-dock-auto' };
   const HEAD_H = 38;
   const AXIS = 22;
   const ROW = 26;
@@ -42,6 +42,7 @@
   const dock = $('dock');
   const grip = $('dock-grip');
   const foldBtn = $('dock-fold');
+  const railBtn = $('rail-btn');
   const tl = $('tl');
   const cv = $('tl-canvas');
   const ctx = cv.getContext('2d');
@@ -127,7 +128,10 @@
       for (const a of d.a || []) { const st = toStep(a, false); bySeq.set(st.s, st); steps.push(st); }
       steps.sort((x, y) => x.t - y.t || x.s - y.s);
       rebuildFeed();
+      histIn = true;
       dirty(true);
+      // a panel restored by the reload can open before this history arrives
+      OV.repaint();
       return;
     }
     const fresh = [];
@@ -241,6 +245,13 @@
   let tab = TABS[store(KEYS.tab)] ? store(KEYS.tab) : 'all';
   let folded = store(KEYS.fold) === '1';
   let dockH = Number(store(KEYS.dock)) || 0;
+  let userDock = dockH > 0;
+  if (!userDock) dockH = Number(store(KEYS.dockAuto)) || 0;
+  let sized = false;
+  // the history comes after the snapshot in a message of its own, with rows the snapshot alone does not give
+  let histIn = false;
+  let savedAuto = '';
+  let railHidden = store(KEYS.rail) === '1';
   let railOn = false;
   let hoverKey = null;
   let hoverNode = null;
@@ -284,8 +295,15 @@
 
   // ---------- layout: rail + dock ----------
 
+  function defaultDock() {
+    return Math.round(Math.min(320, Math.max(150, innerHeight * 0.27)));
+  }
+  function autoDock() {
+    return Math.max(HEAD_H + 60, Math.min(defaultDock(), HEAD_H + AXIS + rowsHeight() + 8));
+  }
   function layout() {
-    const wide = innerWidth >= 1180;
+    const roomy = innerWidth >= 1180;
+    const wide = roomy && !railHidden;
     const railW = wide ? Math.min(560, Math.max(innerWidth >= 2000 ? 400 : 340, Math.round(innerWidth * 0.11))) : 0;
     if (wide !== railOn) {
       railOn = wide;
@@ -293,7 +311,19 @@
       if (wide) railAlerts.appendChild(alertsEl);
       else document.body.insertBefore(alertsEl, alertsHome);
     }
-    if (!dockH) dockH = Math.round(Math.min(320, Math.max(150, innerHeight * 0.27)));
+    railBtn.hidden = !roomy;
+    railBtn.setAttribute('aria-pressed', wide ? 'true' : 'false');
+    railBtn.title = (wide ? 'Hide' : 'Show') + ' the side column (S)';
+    if (!userDock && !gripDrag) {
+      if (rows.length) {
+        dockH = autoDock();
+        if (String(dockH) !== savedAuto) {
+          savedAuto = String(dockH);
+          store(KEYS.dockAuto, savedAuto);
+        }
+      } else dockH = Math.min(dockH, defaultDock());
+    }
+    if (!dockH) dockH = defaultDock();
     dockH = Math.max(HEAD_H + 60, Math.min(dockH, Math.round(innerHeight * 0.6)));
     const h = folded ? HEAD_H : dockH;
     root.style.setProperty('--rail', railW + 'px');
@@ -328,13 +358,19 @@
     store(KEYS.fold, on ? '1' : '0');
     relayout();
   }
+  function setRail(on) {
+    railHidden = !on;
+    store(KEYS.rail, railHidden ? '1' : '0');
+    relayout();
+  }
+  railBtn.addEventListener('click', () => setRail(!railOn));
   foldBtn.addEventListener('click', () => setFold(!folded));
   grip.addEventListener('dblclick', () => setFold(!folded));
   let gripDrag = null;
   grip.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     e.preventDefault();
-    gripDrag = { y: e.clientY, h: folded ? HEAD_H : dockH, id: e.pointerId };
+    gripDrag = { y: e.clientY, h: folded ? HEAD_H : dockH, id: e.pointerId, dock: dockH };
     grip.setPointerCapture(e.pointerId);
     document.body.classList.add('resizing');
   });
@@ -344,14 +380,21 @@
     if (h < HEAD_H + 40) { if (!folded) { folded = true; layout(); } return; }
     folded = false;
     dockH = h;
+    // a click jitters a pixel or two, which is not the user picking a height
+    if (Math.abs(e.clientY - gripDrag.y) > 3) gripDrag.moved = true;
     layout();
     dirty(false);
   });
   function endGrip() {
     if (!gripDrag) return;
+    // a drag that ends folded is a fold, not a height the user picked
+    if (folded) dockH = gripDrag.dock;
+    else if (gripDrag.moved) {
+      userDock = true;
+      store(KEYS.dock, String(dockH));
+    }
     gripDrag = null;
     document.body.classList.remove('resizing');
-    store(KEYS.dock, String(dockH));
     store(KEYS.fold, folded ? '1' : '0');
     relayout();
   }
@@ -1396,6 +1439,14 @@
       lastData = performance.now();
       shown = windowSteps(w);
       rows = buildRows(shown, w);
+      // only this once on its own: a timeline that followed its rows would move the board every time one came or went
+      if (!sized && histIn) {
+        sized = true;
+        if (rows.length && !userDock && !folded && autoDock() !== dockH) {
+          layout();
+          OV.relayout(true);
+        }
+      }
       const pn = performance.now();
       if (pn - lastAgg > 900 || !agg.size) {
         lastAgg = pn;
@@ -1408,7 +1459,7 @@
     }
     const anim = document.hidden || folded ? 0 : draw();
     clearTimeout(timer);
-    if (anim === 2 && !reduced) raf = requestAnimationFrame(frame);
+    if (anim === 2 && !reduced) dirty(false);
     else if (anim === 1 && !reduced) timer = setTimeout(() => dirty(false), 100);
     else timer = setTimeout(() => dirty(true), document.hidden ? 5000 : live ? 1000 : 4000);
   }
@@ -1442,6 +1493,7 @@
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
     if (e.key === 't' || e.key === 'T') setFold(!folded);
     else if (e.key === 'l' || e.key === 'L') { live = true; renderControls(); dirty(true); }
+    else if ((e.key === 's' || e.key === 'S') && !e.repeat && !railBtn.hidden) setRail(!railOn);
   });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) dirty(true); });
   let resizeTimer = 0;
@@ -1453,8 +1505,6 @@
 
   layout();
   renderControls();
-  for (const [type, d] of OV.drain()) ingest(type, d);
-  if (OV.snap()) window.OVLive.onSnap(OV.snap());
   OV.relayout();
   rebuildFeed();
   dirty(true);

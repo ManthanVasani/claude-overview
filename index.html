@@ -28,6 +28,9 @@
   --mono: ui-monospace, "Cascadia Mono", "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
   --rail: 0px;
   --dock: 0px;
+  /* the counts and the buttons are placed apart, so the counts keep room for each icon button */
+  --ic-rail: 40px;
+  --ic-full: 40px;
   --side: #070d19;
   --panel: min(max(460px, var(--rail)), 100vw);
   color-scheme: dark;
@@ -92,11 +95,13 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
   font-size: 12px;
   color: var(--text-3);
   white-space: nowrap;
-  max-width: calc(100vw - var(--rail) - 384px);
+  max-width: calc(100vw - var(--rail) - 384px - var(--ic-rail) - var(--ic-full));
   overflow: hidden;
   text-overflow: ellipsis;
 }
-@media (min-width: 641px) { body.panel-open .hud { max-width: calc(100vw - var(--panel) - 384px); } }
+@media (min-width: 641px) { body.panel-open .hud { max-width: calc(100vw - var(--panel) - 384px - var(--ic-rail) - var(--ic-full)); } }
+body:has(#rail-btn[hidden]) { --ic-rail: 0px; }
+body:has(#full-screen[hidden]) { --ic-full: 0px; }
 .hud b { font: 600 12px var(--mono); color: var(--text); margin-right: 4px; }
 .hud .k-work b { color: var(--work); }
 .hud .k-need b { color: var(--need); }
@@ -120,11 +125,17 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 .ctrl button { padding: 0 11px; cursor: pointer; transition: color .15s, border-color .15s, background .15s; }
 .ctrl button:hover { color: var(--text); border-color: var(--border-hi); }
 .ctrl button:focus-visible { outline: 2px solid var(--wait); outline-offset: 2px; }
-.ctrl button[aria-pressed="true"] { color: var(--work); border-color: rgba(52, 211, 153, .45); background: rgba(52, 211, 153, .1); }
+/* an icon button shows its state in the icon */
+.ctrl button:not(.ic)[aria-pressed="true"] { color: var(--work); border-color: rgba(52, 211, 153, .45); background: rgba(52, 211, 153, .1); }
 .ctrl .grp { display: flex; padding: 0; overflow: hidden; }
 .ctrl .grp button { border: 0; border-radius: 0; background: none; box-shadow: none; backdrop-filter: none; min-width: 32px; }
 .ctrl .grp button + button { border-left: 1px solid var(--border); }
 .ctrl .grp button.pct { min-width: 54px; font: 500 12px var(--mono); }
+.ctrl button.ic { width: 32px; padding: 0; display: grid; place-items: center; }
+.ctrl button.ic svg { width: 15px; height: 15px; display: block; }
+#rail-btn .col { fill: none; }
+#rail-btn[aria-pressed="true"] .col { fill: currentColor; fill-opacity: .45; }
+#full-screen[aria-pressed="true"] .fs-in, #full-screen[aria-pressed="false"] .fs-out { display: none; }
 .banner {
   top: 14px;
   left: 16px;
@@ -708,6 +719,8 @@ body.panel-open .r-alerts .alerts { right: auto; }
   body.panel-open .alerts { display: none; }
   .al-list { max-height: 30vh; }
 }
+/* the bottom row has no room for it on a phone this narrow */
+@media (max-width: 400px) { #full-screen { display: none; } }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
@@ -723,7 +736,9 @@ body.panel-open .r-alerts .alerts { right: auto; }
   <button type="button" id="usage-btn" aria-pressed="false" title="Usage: tokens and account limits (U)">Usage</button>
   <button type="button" id="only-active" aria-pressed="false" title="Hide finished agents, shells and workflows">Active only</button>
   <div class="grp"><button type="button" id="zoom-out" title="Zoom out (Ctrl + − or Ctrl + scroll)" aria-label="Zoom out">−</button><button type="button" id="zoom-pct" class="pct" title="Full size (0)">100%</button><button type="button" id="zoom-in" title="Zoom in (Ctrl + = or Ctrl + scroll)" aria-label="Zoom in">+</button></div>
-  <button type="button" id="fit" aria-pressed="false" title="Show everything on one screen (F)">Fit</button>
+  <button type="button" id="fit" aria-pressed="false" title="Fit the board to the window (F)">Fit</button>
+  <button type="button" id="rail-btn" class="ic" aria-pressed="true" aria-label="Side column" title="Hide the side column (S)" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><rect class="col" x="9.5" y="3.5" width="4" height="9" rx=".5"/><path d="M9.5 3v10" stroke="currentColor" stroke-width="1.5"/></svg></button>
+  <button type="button" id="full-screen" class="ic" aria-pressed="false" aria-label="Full screen" title="Full screen (Shift + F)"><svg class="fs-in" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><svg class="fs-out" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.5V6H2.5M13.5 6H10V2.5M10 13.5V10h3.5M2.5 10H6v3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
 </div>
 <aside class="rail" id="rail" aria-label="What the sessions are touching">
   <div class="r-alerts" id="r-alerts"></div>

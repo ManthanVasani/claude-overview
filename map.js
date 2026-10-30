@@ -14,7 +14,10 @@
   const MARGIN = 28;
   const MAX_SHELLS = 5;
   const MAX_DONE = 3;
-  const MIN_FIT = 0.5;
+  // below this the text is too small to read
+  const READABLE = 0.85;
+  // a session wider than the window would otherwise scroll sideways, which is harder to notice than a little shrink
+  const TIGHT = 0.75;
   const FIT_MAX = 1.5;
   const MIN_ZOOM = 0.2;
   const MAX_ZOOM = 2.2;
@@ -22,6 +25,9 @@
   const ACTIVE_KEY = 'claude-overview-only-active';
   const VIEW_KEY = 'claude-overview-view';
   const ALERTS_KEY = 'claude-overview-alerts-open';
+  const VIEW_AT_KEY = 'claude-overview-view-at';
+  const OPEN_KEY = 'claude-overview-open';
+  const EXPANDED_KEY = 'claude-overview-expanded';
 
   const $ = (id) => document.getElementById(id);
   const viewport = $('viewport');
@@ -38,6 +44,7 @@
   const activeBtn = $('only-active');
   const fitBtn = $('fit');
   const pctBtn = $('zoom-pct');
+  const fullBtn = $('full-screen');
 
   let snap = null;
   let offset = 0;
@@ -50,13 +57,14 @@
   const nodeEls = new Map();
   const prevSteps = new Map();
   const prevStates = new Map();
-  const expanded = new Set();
+  const expanded = new Set([].concat(readJson(EXPANDED_KEY) || []).filter((k) => typeof k === 'string'));
   let selected = null;
   let hoverId = null;
   let onlyActive = store(ACTIVE_KEY) === '1';
   let view = { x: MARGIN, y: MARGIN, k: 1 };
-  // 'top': full size from the top-left; 'fit': everything on screen; null: where the user scrolled or zoomed to.
-  let follow = store(VIEW_KEY) === 'top' ? 'top' : 'fit';
+  let restoreView = store(VIEW_KEY) === 'free' ? readJson(VIEW_AT_KEY) : null;
+  let follow = restoreView ? null : store(VIEW_KEY) === 'top' ? 'top' : 'fit';
+  let restoreOpen = store(OPEN_KEY);
   let packW = 0;
   let packK = 0;
   let packH = Infinity;
@@ -74,6 +82,9 @@
       localStorage.setItem(key, value);
     } catch (e) { /* storage unavailable */ }
     return null;
+  }
+  function readJson(key) {
+    try { return JSON.parse(store(key)); } catch (e) { return null; }
   }
 
   // ---------- formatting ----------
@@ -300,15 +311,16 @@
     n.sub = Math.max(n.h, t);
     n.tw = n.w + (kw ? GAP_X + kw : 0);
   }
-  function place(n, x, top, out) {
+  // centred on a group taller than the screen, the card would start out of sight below the fold
+  function place(n, x, top, out, tall) {
     n.x = x;
-    n.y = Math.round(top + (n.sub - n.h) / 2);
+    n.y = n.sub > tall ? top : Math.round(top + (n.sub - n.h) / 2);
     out.push(n);
     let cy = top + (n.sub - n.kidsH) / 2;
     const cx = x + n.w + GAP_X;
     n.kids.forEach((c, i) => {
       if (i) cy += gap(n.kids[i - 1], c);
-      place(c, cx, Math.round(cy), out);
+      place(c, cx, Math.round(cy), out, tall);
       cy += c.sub;
     });
   }
@@ -367,7 +379,7 @@
       }
     }
     if (!cols) {
-      place(root, PAD, PAD, nodes);
+      place(root, PAD, PAD, nodes, maxH - 2 * PAD);
       let w = 0;
       for (const n of nodes) w = Math.max(w, n.x + n.w);
       L.nodes = nodes;
@@ -386,7 +398,7 @@
       let cw = 0;
       col.forEach((c, i) => {
         if (i) cy += gap(col[i - 1], c);
-        place(c, cx, cy, nodes);
+        place(c, cx, cy, nodes, maxH - 2 * PAD);
         cy += c.sub;
         cw = Math.max(cw, c.tw);
         if (j) c.via = { gx: cx - GAP_X / 2, bus: PAD + BUS / 2 };
@@ -472,11 +484,13 @@
     const bottom = 14 + alertsEl.offsetHeight;
     return { x0: (left - 16 - MARGIN) / k, y1: (bottom + 16 - res.top - MARGIN) / k };
   }
+  function fullWidth() {
+    return Math.max(320, viewport.clientWidth - 2 * MARGIN);
+  }
   function placeLanes(lanes) {
-    const vw = viewport.clientWidth;
     const vh = viewport.clientHeight;
     const res = reserved();
-    const fullW = Math.max(320, vw - 2 * MARGIN);
+    const fullW = fullWidth();
     const availH = Math.max(240, vh - 2 * MARGIN - res.top - res.bottom);
     // lanes get the screen's shape at scale k, so a tall session spreads into the width a wide screen has spare
     const at = (k, maxW, maxH) => {
@@ -489,19 +503,25 @@
     if (follow === 'fit') {
       // the biggest scale at which everything fits; the corner left for the list is exact only at that scale
       const atK = (k) => at(k, fullW / k, availH / k);
-      for (const k of [FIT_MAX, 1.35, 1.2, 1.1, 1, 0.92, 0.85, 0.78, 0.72, 0.66, 0.6, 0.55]) {
-        const t = atK(k);
+      let t = null;
+      for (const k of [FIT_MAX, 1.35, 1.2, 1.1, 1, 0.92, READABLE]) {
+        t = atK(k);
         if (t.fits) { best = t; break; }
       }
-      if (!best) best = atK(MIN_FIT);
-      // a small change does not step the scale up and reshuffle the board
-      if (packK && packK < best.k && best.k <= packK * 1.16) {
+      if (!best) best = t;
+      if (!best.fits && best.r.w * best.k > fullW + 0.5) best = atK(Math.max(TIGHT, fullW / best.r.w));
+      // a small step up is not worth reshuffling the board; text too small to read is
+      if (packK && packK < best.k && best.k <= packK * 1.16 && (packK >= READABLE || best.k < READABLE)) {
         const t = atK(packK);
         if (t.fits) best = t;
         else best = atK(best.k);
       }
-    } else if (follow === 'top' || !packW) {
+    } else if (follow === 'top') {
       best = at(1, fullW, availH);
+    } else if (!packW) {
+      // packed for a zoom above full size, the board would stay narrow once the user zooms back out
+      const k = Math.min(view.k || 1, 1);
+      best = at(k, fullW / k, availH / k);
     } else {
       // a zoom or scroll of the user's keeps the arrangement it was made on
       best = at(packK || 1, packW, packH);
@@ -524,6 +544,46 @@
     renderBars(animate);
     pctBtn.textContent = Math.round(view.k * 100) + '%';
     if (window.OVLive) window.OVLive.onView();
+    if (!follow) saveView();
+  }
+  let saveTimer = 0;
+  let savedView = '';
+  function writeView() {
+    saveTimer = 0;
+    if (follow || restoreView || !worldW) return;
+    const s = JSON.stringify({ x: view.x, y: view.y, k: view.k, pk: packK, pw: packW, ph: isFinite(packH) ? packH : 0, vw: viewport.clientWidth, vh: viewport.clientHeight });
+    if (s === savedView) return;
+    savedView = s;
+    store(VIEW_AT_KEY, s);
+  }
+  function saveView() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(writeView, 300);
+  }
+  // a reload straight after a scroll comes before the timer
+  window.addEventListener('pagehide', () => { if (saveTimer) { clearTimeout(saveTimer); writeView(); } });
+  // in a window of another size the saved arrangement and scroll would point elsewhere, so only the zoom stays
+  function takeRestore() {
+    const r = restoreView;
+    restoreView = null;
+    const num = (v) => typeof v === 'number' && isFinite(v);
+    if (!r || ![r.x, r.y, r.k, r.pk, r.pw, r.vw, r.vh].every(num) || r.k <= 0 || r.pw <= 0) {
+      setFollow('fit');
+      return;
+    }
+    const same = Math.abs(r.vw - viewport.clientWidth) <= 40 && Math.abs(r.vh - viewport.clientHeight) <= 40;
+    const k = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, r.k));
+    if (same) {
+      // a window a few pixels narrower counts as the same, but the packing width saved for it may not fit
+      packW = Math.min(r.pw, fullWidth() / r.pk);
+      packH = r.ph > 0 ? r.ph : Infinity;
+      packK = r.pk;
+      view = { x: r.x, y: r.y, k };
+    } else {
+      packW = 0;
+      view = { x: MARGIN, y: reserved().top + MARGIN, k };
+    }
+    setFollow(null);
   }
 
   // ---------- scrollbars ----------
@@ -652,11 +712,26 @@
   }
   // Zooming out stops once everything is on screen.
   function minZoom() {
-    const u = usable();
     if (!worldW) return MIN_ZOOM;
-    return Math.max(MIN_ZOOM, Math.min(view.k, (u.w - 2 * MARGIN) / worldW, (u.h - 2 * MARGIN) / worldH));
+    return Math.max(MIN_ZOOM, Math.min(view.k, fitScale(0)));
+  }
+  function fitScale(slack) {
+    if (!worldW) return Infinity;
+    const u = usable();
+    return Math.min((u.w - 2 * MARGIN + slack) / worldW, (u.h - 2 * MARGIN + slack) / worldH);
+  }
+  // as a page reflows when the browser zooms out; zooming in keeps the arrangement, so the card being read stays put
+  function reflow(py, k) {
+    const at = worldH ? (py - view.y) / (worldH * view.k) : 0;
+    setFollow(null);
+    packW = 0;
+    view.k = k;
+    render();
+    view.y = py - at * worldH * k;
   }
   function zoomAt(px, py, k) {
+    const out = Math.max(MIN_ZOOM, k);
+    if (out < view.k && out < Math.min(READABLE, packK / 1.15) && out > fitScale(0.5)) reflow(py, out);
     k = Math.max(minZoom(), Math.min(MAX_ZOOM, k));
     view.x = px - (px - view.x) * (k / view.k);
     view.y = py - (py - view.y) * (k / view.k);
@@ -664,12 +739,21 @@
     clampView();
   }
   function setFollow(mode) {
+    if (mode === 'fit' && follow !== 'fit') packK = 0;
     follow = mode;
-    if (mode) store(VIEW_KEY, mode);
-    fitBtn.setAttribute('aria-pressed', mode === 'fit' ? 'true' : 'false');
-    fitBtn.title = mode === 'fit' ? 'Back to full size (F)' : 'Show everything on one screen (F)';
+    // what the user does before the sessions arrive wins over the view saved before the reload
+    restoreView = null;
+    store(VIEW_KEY, mode || 'free');
+    // a spot saved in an earlier free view must not come back the next time the view goes free
+    if (mode) { savedView = ''; store(VIEW_AT_KEY, ''); } else saveView();
+    paintFit();
+  }
+  function paintFit() {
+    fitBtn.setAttribute('aria-pressed', follow === 'fit' ? 'true' : 'false');
+    fitBtn.title = follow === 'fit' ? 'Back to full size (F)' : 'Fit the board to the window (F)';
   }
   function moved() {
+    restoreView = null;
     if (follow) setFollow(null);
   }
   function showAll() {
@@ -759,6 +843,32 @@
   if (/Mac|iPhone|iPad/.test(navigator.platform)) for (const id of ['zoom-in', 'zoom-out']) $(id).title = $(id).title.replace(/Ctrl/g, '⌘');
   $('zoom-out').addEventListener('click', () => zoomBy(1 / 1.2));
 
+  const pageEl = document.documentElement;
+  // false in a frame without allowfullscreen, where the request would fail silently
+  const canFull = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+  function inFull() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+  function toggleFull() {
+    if (inFull()) {
+      const q = (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      if (q && q.catch) q.catch(() => {});
+      return;
+    }
+    if (!canFull) return;
+    const p = (pageEl.requestFullscreen || pageEl.webkitRequestFullscreen).call(pageEl);
+    if (p && p.catch) p.catch(() => {});
+  }
+  function paintFull() {
+    const on = inFull();
+    fullBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    fullBtn.title = on ? 'Leave full screen (Shift + F or Esc)' : 'Full screen (Shift + F)';
+  }
+  // an iPhone has no full screen for pages
+  fullBtn.hidden = !canFull;
+  fullBtn.addEventListener('click', toggleFull);
+  document.addEventListener('fullscreenchange', paintFull);
+  document.addEventListener('webkitfullscreenchange', paintFull);
+  paintFull();
+
   function setOnlyActive(on) {
     onlyActive = on;
     activeBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
@@ -770,7 +880,8 @@
     render();
   });
   setOnlyActive(onlyActive);
-  setFollow(follow);
+  // not setFollow: a saved free view must outlast a reload that never gets a snapshot
+  paintFit();
 
   // ---------- card markup ----------
 
@@ -1019,6 +1130,9 @@
     renderAlerts();
     renderBanner();
     const lanes = top.map((s) => layoutLane(s, all));
+    // taken on an empty board, the restored view would not be put on screen once the sessions arrive
+    const restoring = !!restoreView && lanes.length > 0;
+    if (restoring) takeRestore();
     placeLanes(lanes);
     emptyEl.hidden = lanes.length > 0;
 
@@ -1048,16 +1162,27 @@
     noticeChanges(all);
     applyHover();
     renderHud();
+    if (restoreOpen && (restoreOpen === 'usage' || lanes.length)) {
+      const id = restoreOpen;
+      restoreOpen = null;
+      if (id === 'usage') { if (window.OVUsage) window.OVUsage.open(); }
+      else if (id.indexOf('r:') === 0 || rawIndex.has(id)) openPanel(id);
+      else store(OPEN_KEY, '');
+    }
     if (selected) renderPanel();
     if (window.OVLive) window.OVLive.onSnap(snap);
     if (follow === 'fit') fit(!first);
     else if (follow === 'top') toTop(!first);
-    else {
+    // an empty board would clamp the user's spot away, so it waits for the sessions to come back
+    else if (lanes.length) {
       const before = view.x + ',' + view.y;
       clampView();
-      if (view.x + ',' + view.y !== before) applyView(false);
-      else renderBars(false);
-    }
+      if (first || restoring || view.x + ',' + view.y !== before) applyView(false);
+      else {
+        renderBars(false);
+        saveView();
+      }
+    } else renderBars(false);
     first = false;
   }
 
@@ -1202,6 +1327,7 @@
     if (n.kind === 'more') {
       if (expanded.has(n.data.key)) expanded.delete(n.data.key);
       else expanded.add(n.data.key);
+      saveExpanded();
       render();
       return;
     }
@@ -1223,11 +1349,26 @@
     const r = rawIndex.get(id);
     if (!r) return;
     if (onlyActive && !active(r)) setOnlyActive(false);
-    for (let p = r.parent; p; p = p.parent) {
-      expanded.add(p.id + '|sh');
-      expanded.add(p.id + '|fin');
+    const added = [];
+    for (let c = r; c.parent; c = c.parent) {
+      if (c.kind !== 'shell' && active(c)) continue;
+      const key = c.parent.id + (c.kind === 'shell' ? '|sh' : '|fin');
+      if (!expanded.has(key)) added.push(key);
+      expanded.delete(key);
+      expanded.add(key);
     }
     render();
+    // kept for a group not there yet, the key would open that group the day it forms
+    for (const key of added) if (!index.has(key)) expanded.delete(key);
+    saveExpanded();
+  }
+  // the newest keys, so groups of sessions long gone fall off the end without closing one still on the board
+  function saveExpanded() {
+    for (const k of expanded) {
+      if (expanded.size <= 200) break;
+      if (!index.has(k)) expanded.delete(k);
+    }
+    store(EXPANDED_KEY, JSON.stringify([...expanded]));
   }
   function focusNode(id) {
     if (!index.has(id)) reveal(id);
@@ -1272,7 +1413,8 @@
       if (view.x + ',' + view.y !== before) { applyView(true); moved(); }
       return;
     }
-    if (e.key === 'f' || e.key === 'F') toggleFit();
+    if ((e.key === 'f' || e.key === 'F') && e.shiftKey) { if (!e.repeat) toggleFull(); }
+    else if (e.key === 'f' || e.key === 'F') toggleFit();
     else if (e.key === '0') fullSize();
     else if (e.key === '+' || e.key === '=') zoomBy(1.2);
     else if (e.key === '-' || e.key === '_') zoomBy(1 / 1.2);
@@ -1415,6 +1557,8 @@
   }
   function openPanel(id) {
     selected = id;
+    restoreOpen = null;
+    store(OPEN_KEY, id);
     panel.classList.add('open');
     document.body.classList.add('panel-open');
     for (const el of world.querySelectorAll('.node.sel')) el.classList.remove('sel');
@@ -1429,6 +1573,8 @@
   }
   function closePanel() {
     selected = null;
+    restoreOpen = null;
+    store(OPEN_KEY, '');
     panel.classList.remove('open');
     document.body.classList.remove('panel-open');
     for (const el of world.querySelectorAll('.node.sel')) el.classList.remove('sel');
@@ -1548,7 +1694,7 @@
     const toLive = (type) => (ev) => {
       let d;
       try { d = JSON.parse(ev.data); } catch (e) { return; }
-      if (window.OVLive) window.OVLive.ingest(type, d); else liveQueue.push([type, d]);
+      if (window.OVLive) window.OVLive.ingest(type, d);
     };
     es.addEventListener('hist', toLive('hist'));
     es.addEventListener('ev', toLive('ev'));
@@ -1573,7 +1719,6 @@
 
   // ---------- what the timeline and the right column use ----------
 
-  const liveQueue = [];
   function markNodes(ids) {
     for (const el of world.querySelectorAll('.node.touch')) el.classList.remove('touch');
     for (const id of ids || []) {
@@ -1586,8 +1731,6 @@
   window.OV = {
     now: nowMs,
     since,
-    snap: () => snap,
-    drain: () => liveQueue.splice(0),
     selected: () => selected,
     name(id) { const n = rawIndex.get(id); return n ? nameOf(n) : null; },
     rect(id) {
@@ -1607,8 +1750,11 @@
     close: closePanel,
     repaint() { if (selected) renderPanel(); },
     show(id) { openPanel(id); focusNode(id); },
-    relayout() { packW = 0; packK = 0; render(); },
+    // keep holds only the user's own zoom and scroll; Fit fits afresh, so its step-up guard cannot hold an old scale
+    relayout(keep) { if (!keep || follow) { packW = 0; packK = 0; } render(); },
   };
 
-  connect();
+  // the first snapshot restores the view, which needs the side column and timeline that live.js lays out
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', connect);
+  else connect();
 })();

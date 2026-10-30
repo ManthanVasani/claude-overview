@@ -286,6 +286,7 @@
 
   window.OVUsage = {
     html() { return html; },
+    open,
     onSelect() {
       const on = OV.selected() === ID;
       btn.setAttribute('aria-pressed', String(on));
