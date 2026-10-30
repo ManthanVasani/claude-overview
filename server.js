@@ -1596,8 +1596,7 @@ function sessionView(S, now, agents, workflows, shells, blocked) {
     steps: c.steps,
     prompt: c.lastPromptEntry || (c.prompt ? oneLine(c.prompt, 400) : null) || (S.headless && S.headless.prompt) || null,
     headless: S.headless ? { kept: S.headless.kept } : null,
-    // Claude Code reports a screen you opened, such as /model, as a dialog too
-    waiting: S.alive && reg.status === 'waiting' && reg.waitingFor !== 'dialog open' ? { for: reg.waitingFor || null, since: reg.statusUpdatedAt || null } : null,
+    waiting: S.alive && reg.status === 'waiting' ? { for: reg.waitingFor || null, since: reg.statusUpdatedAt || null } : null,
     said: c.said,
     lastWrite,
     recent: c.recent.slice(-6).reverse(),
