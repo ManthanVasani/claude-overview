@@ -508,7 +508,7 @@
       }
       if (!best) best = t;
       if (!best.fits && best.r.w * best.k > fullW + 0.5) best = atK(Math.max(TIGHT, fullW / best.r.w));
-      // a small change does not step the scale up and reshuffle the board, unless that makes it readable again
+      // a small step up is not worth reshuffling the board; text too small to read is
       if (packK && packK < best.k && best.k <= packK * 1.16 && (packK >= READABLE || best.k < READABLE)) {
         const t = atK(packK);
         if (t.fits) best = t;
@@ -517,7 +517,8 @@
     } else if (follow === 'top') {
       best = at(1, fullW, availH);
     } else if (!packW) {
-      const k = view.k || 1;
+      // packed for a zoom above full size, the board would stay narrow once the user zooms back out
+      const k = Math.min(view.k || 1, 1);
       best = at(k, fullW / k, availH / k);
     } else {
       // a zoom or scroll of the user's keeps the arrangement it was made on
@@ -559,7 +560,7 @@
   }
   // a reload straight after a scroll comes before the timer
   window.addEventListener('pagehide', () => { if (saveTimer) { clearTimeout(saveTimer); writeView(); } });
-  // a saved arrangement only suits a window of the same size; in another the zoom stays and the board refills it
+  // in a window of another size the saved arrangement and scroll would point elsewhere, so only the zoom stays
   function takeRestore() {
     const r = restoreView;
     restoreView = null;
@@ -572,7 +573,8 @@
     packW = same ? r.pw : 0;
     packH = r.ph > 0 ? r.ph : Infinity;
     packK = r.pk;
-    view = { x: r.x, y: r.y, k: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, r.k)) };
+    const k = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, r.k));
+    view = same ? { x: r.x, y: r.y, k } : { x: MARGIN, y: reserved().top + MARGIN, k };
     setFollow(null);
   }
 
@@ -1680,7 +1682,7 @@
     const toLive = (type) => (ev) => {
       let d;
       try { d = JSON.parse(ev.data); } catch (e) { return; }
-      if (window.OVLive) window.OVLive.ingest(type, d); else liveQueue.push([type, d]);
+      if (window.OVLive) window.OVLive.ingest(type, d);
     };
     es.addEventListener('hist', toLive('hist'));
     es.addEventListener('ev', toLive('ev'));
@@ -1705,7 +1707,6 @@
 
   // ---------- what the timeline and the right column use ----------
 
-  const liveQueue = [];
   function markNodes(ids) {
     for (const el of world.querySelectorAll('.node.touch')) el.classList.remove('touch');
     for (const id of ids || []) {
@@ -1718,8 +1719,6 @@
   window.OV = {
     now: nowMs,
     since,
-    snap: () => snap,
-    drain: () => liveQueue.splice(0),
     selected: () => selected,
     name(id) { const n = rawIndex.get(id); return n ? nameOf(n) : null; },
     rect(id) {

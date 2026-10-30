@@ -34,7 +34,7 @@ Then open http://127.0.0.1:3100/.
 - Scroll to move around the board, or drag it. Shift + scroll moves sideways.
 - Ctrl + scroll (Command on a Mac), a pinch, or Ctrl + and Ctrl - zoom. F fits the board to the window: all of it when
   it fits at a size you can read, otherwise the window's width, and you scroll down for the rest. 0 is full size.
-- Shift + F, or the button at the bottom right, goes full screen. S hides or shows the right-hand column.
+- Shift + F, or the button at the bottom right, goes full screen. S hides or shows the right-hand column, in a window wide enough to have one.
 - Click a card to see what it is doing, what it has touched and what failed.
 - The timeline at the bottom shows every tool call: 15m, 1h, 3h, or Live. T folds it away.
 - Usage, or the U key, opens token totals by day, model, session and folder, and the plan limits of each cswap account.

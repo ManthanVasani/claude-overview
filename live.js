@@ -1497,8 +1497,6 @@
 
   layout();
   renderControls();
-  for (const [type, d] of OV.drain()) ingest(type, d);
-  if (OV.snap()) window.OVLive.onSnap(OV.snap());
   OV.relayout();
   rebuildFeed();
   dirty(true);
