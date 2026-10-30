@@ -35,6 +35,13 @@ function pad(n) { return n < 10 ? '0' + n : String(n); }
 function dayKey(t) { const d = new Date(t); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
 function hourKey(t) { const d = new Date(t); return dayKey(t) + 'T' + pad(d.getHours()); }
 
+function readFiles(file) {
+  try {
+    const d = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return d && d.v === VERSION && d.files ? d.files : null;
+  } catch (e) { /* first run, no clone index, or unreadable */ return null; }
+}
+
 function load() {
   // a save cut off by a kill leaves its temporary file behind
   try {
@@ -45,20 +52,15 @@ function load() {
       if (f.startsWith(pre) && f.endsWith('.tmp') && Date.now() - fs.statSync(p).mtimeMs > TMP_STALE_MS) fs.unlinkSync(p);
     }
   } catch (e) { /* left for the next start */ }
-  try {
-    const d = JSON.parse(fs.readFileSync(INDEX, 'utf8'));
-    if (d && d.v === VERSION && d.files) files = d.files;
-  } catch (e) { /* first run or unreadable: start over */ }
+  files = readFiles(INDEX) || {};
   // a clone's old index holds totals of transcripts deleted since; only this folder's rows belong here
-  try {
-    const d = JSON.parse(fs.readFileSync(SEED, 'utf8'));
-    if (!d || d.v !== VERSION || !d.files) return;
-    for (const p in d.files) {
-      if (files[p] || !p.startsWith(ROOT + path.sep)) continue;
-      files[p] = d.files[p];
-      unsaved = true;
-    }
-  } catch (e) { /* no clone index, or an unreadable one */ }
+  const seed = readFiles(SEED) || {};
+  for (const p in seed) {
+    const had = files[p];
+    if (!p.startsWith(ROOT + path.sep) || (had && (had.ino !== seed[p].ino || had.off >= seed[p].off))) continue;
+    files[p] = seed[p];
+    unsaved = true;
+  }
 }
 function save() {
   const now = Date.now();
@@ -74,7 +76,7 @@ function save() {
     fs.writeFileSync(tmp, JSON.stringify({ v: VERSION, files }), { mode: 0o600 });
     fs.renameSync(tmp, INDEX);
     unsaved = false;
-  } catch (e) { /* the next save tries again */ }
+  } catch (e) { parentPort.postMessage({ saveError: e.message }); }
   lastSave = now;
 }
 

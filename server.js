@@ -1791,7 +1791,10 @@ function startUsage() {
   try {
     w = new Worker(path.join(__dirname, 'usage-scan.js'), { workerData: { root: PROJECTS_DIR, index: USAGE_INDEX, seed: path.join(__dirname, 'usage-index.json') } });
   } catch (e) { logOnce(e); return; }
-  w.on('message', (m) => { usageSummary = m; });
+  w.on('message', (m) => {
+    if (m.saveError) logOnce('Could not save the usage totals: ' + m.saveError);
+    else usageSummary = m;
+  });
   w.on('error', logOnce);
   w.on('exit', () => setTimeout(startUsage, MIN));
 }
@@ -1805,11 +1808,9 @@ function xdgDir(name, fallback) {
 // npm can install the code where its user cannot write, and the index keeps the totals of deleted transcripts
 function usageIndexFile() {
   const base = process.platform === 'darwin' ? path.join(HOME, 'Library', 'Application Support') : xdgDir('XDG_STATE_HOME', path.join('.local', 'state'));
-  const dir = path.join(base, 'claude-overview');
-  const root = path.resolve(PROJECTS_DIR);
   // servers reading different Claude folders must not mix their totals
-  const own = root === path.join(HOME, '.claude', 'projects') ? '' : '-' + crypto.createHash('sha1').update(root).digest('hex').slice(0, 12);
-  return path.join(dir, 'usage-index' + own + '.json');
+  const folder = crypto.createHash('sha1').update(path.resolve(PROJECTS_DIR)).digest('hex').slice(0, 12);
+  return path.join(base, 'claude-overview', 'usage-index-' + folder + '.json');
 }
 
 // cswap keeps its files under the XDG data dir on Linux and in ~/.claude-swap-backup on macOS
