@@ -5,7 +5,7 @@
 ![Tokens: zero](https://img.shields.io/badge/tokens-zero-2ea043)
 ![Claude data: read-only](https://img.shields.io/badge/Claude%20data-read--only-2ea043)
 ![Listens on 127.0.0.1 only](https://img.shields.io/badge/listens%20on-127.0.0.1%20only-2ea043)
-![npm packages: none](https://img.shields.io/badge/npm%20packages-none-2ea043)
+![npm dependencies: none](https://img.shields.io/badge/npm%20dependencies-none-2ea043)
 
 ![The board updating live: a session turns pink when it needs you, and clicking an agent opens its details](docs/screenshots/demo.gif)
 
