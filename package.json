@@ -30,6 +30,7 @@
     "map.js",
     "live.js",
     "usage-ui.js",
+    "alerts.js",
     "vendor/"
   ],
   "engines": {
