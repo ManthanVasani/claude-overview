@@ -128,6 +128,7 @@
       for (const a of d.a || []) { const st = toStep(a, false); bySeq.set(st.s, st); steps.push(st); }
       steps.sort((x, y) => x.t - y.t || x.s - y.s);
       rebuildFeed();
+      histIn = true;
       dirty(true);
       // a panel restored by the reload can open before this history arrives
       OV.repaint();
@@ -247,6 +248,9 @@
   let userDock = dockH > 0;
   if (!userDock) dockH = Number(store(KEYS.dockAuto)) || 0;
   let sized = false;
+  // the history comes after the snapshot in a message of its own, with rows the snapshot alone does not give
+  let histIn = false;
+  let savedAuto = '';
   let railHidden = store(KEYS.rail) === '1';
   let railOn = false;
   let hoverKey = null;
@@ -313,7 +317,10 @@
     if (!userDock && !gripDrag) {
       if (rows.length) {
         dockH = autoDock();
-        store(KEYS.dockAuto, String(dockH));
+        if (String(dockH) !== savedAuto) {
+          savedAuto = String(dockH);
+          store(KEYS.dockAuto, savedAuto);
+        }
       } else dockH = Math.min(dockH, defaultDock());
     }
     if (!dockH) dockH = defaultDock();
@@ -1431,7 +1438,7 @@
       shown = windowSteps(w);
       rows = buildRows(shown, w);
       // only this once on its own: a timeline that followed its rows would move the board every time one came or went
-      if (!sized && rows.length) {
+      if (!sized && histIn && rows.length) {
         sized = true;
         if (!userDock && !folded && autoDock() !== dockH) {
           layout();
@@ -1450,8 +1457,7 @@
     }
     const anim = document.hidden || folded ? 0 : draw();
     clearTimeout(timer);
-    // a dirty() during this frame may have booked the next one already
-    if (anim === 2 && !reduced) { if (!raf) raf = requestAnimationFrame(frame); }
+    if (anim === 2 && !reduced) dirty(false);
     else if (anim === 1 && !reduced) timer = setTimeout(() => dirty(false), 100);
     else timer = setTimeout(() => dirty(true), document.hidden ? 5000 : live ? 1000 : 4000);
   }

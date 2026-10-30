@@ -58,6 +58,7 @@
   const prevSteps = new Map();
   const prevStates = new Map();
   const expanded = new Set([].concat(readJson(EXPANDED_KEY) || []).filter((k) => typeof k === 'string'));
+  const shownOpen = new Set();
   let selected = null;
   let hoverId = null;
   let onlyActive = store(ACTIVE_KEY) === '1';
@@ -247,6 +248,7 @@
 
   function moreNode(parent, key, hidden, label, running) {
     const open = expanded.has(key);
+    if (open) shownOpen.add(key);
     return mk(key, 'more', { key, open, label: open ? 'Show fewer' : '+' + hidden + ' ' + label + (running ? ' · ' + running + ' running' : '') }, parent.sid);
   }
 
@@ -570,11 +572,16 @@
       return;
     }
     const same = Math.abs(r.vw - viewport.clientWidth) <= 40 && Math.abs(r.vh - viewport.clientHeight) <= 40;
-    packW = same ? r.pw : 0;
-    packH = r.ph > 0 ? r.ph : Infinity;
-    packK = r.pk;
     const k = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, r.k));
-    view = same ? { x: r.x, y: r.y, k } : { x: MARGIN, y: reserved().top + MARGIN, k };
+    if (same) {
+      packW = r.pw;
+      packH = r.ph > 0 ? r.ph : Infinity;
+      packK = r.pk;
+      view = { x: r.x, y: r.y, k };
+    } else {
+      packW = 0;
+      view = { x: MARGIN, y: reserved().top + MARGIN, k };
+    }
     setFollow(null);
   }
 
@@ -1119,6 +1126,7 @@
     top.sort((a, b) => (b.alive - a.alive) || (a.startedAt || 0) - (b.startedAt || 0) || (a.id < b.id ? -1 : 1));
     index.clear();
     rawIndex.clear();
+    shownOpen.clear();
     renderAlerts();
     renderBanner();
     const lanes = top.map((s) => layoutLane(s, all));
@@ -1350,11 +1358,11 @@
     saveExpanded();
     render();
   }
-  // the newest keys, so groups of sessions long gone fall off the end
+  // the newest keys, so groups of sessions long gone fall off the end without closing one still on the board
   function saveExpanded() {
     for (const k of expanded) {
       if (expanded.size <= 200) break;
-      expanded.delete(k);
+      if (!shownOpen.has(k)) expanded.delete(k);
     }
     store(EXPANDED_KEY, JSON.stringify([...expanded]));
   }
