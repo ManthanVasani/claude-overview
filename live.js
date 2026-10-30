@@ -291,9 +291,11 @@
 
   // ---------- layout: rail + dock ----------
 
+  function defaultDock() {
+    return Math.round(Math.min(320, Math.max(150, innerHeight * 0.27)));
+  }
   function autoDock() {
-    const cap = Math.round(Math.min(320, Math.max(150, innerHeight * 0.27)));
-    return Math.max(HEAD_H + 60, Math.min(cap, HEAD_H + AXIS + rowsHeight() + 8));
+    return Math.max(HEAD_H + 60, Math.min(defaultDock(), HEAD_H + AXIS + rowsHeight() + 8));
   }
   function layout() {
     const roomy = innerWidth >= 1180;
@@ -308,11 +310,13 @@
     railBtn.hidden = !roomy;
     railBtn.setAttribute('aria-pressed', wide ? 'true' : 'false');
     railBtn.title = (wide ? 'Hide' : 'Show') + ' the side column (S)';
-    if (!userDock && !gripDrag && rows.length) {
-      dockH = autoDock();
-      store(KEYS.dockAuto, String(dockH));
+    if (!userDock && !gripDrag) {
+      if (rows.length) {
+        dockH = autoDock();
+        store(KEYS.dockAuto, String(dockH));
+      } else dockH = Math.min(dockH, defaultDock());
     }
-    if (!dockH) dockH = Math.round(Math.min(320, Math.max(150, innerHeight * 0.27)));
+    if (!dockH) dockH = defaultDock();
     dockH = Math.max(HEAD_H + 60, Math.min(dockH, Math.round(innerHeight * 0.6)));
     const h = folded ? HEAD_H : dockH;
     root.style.setProperty('--rail', railW + 'px');

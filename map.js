@@ -63,8 +63,6 @@
   let onlyActive = store(ACTIVE_KEY) === '1';
   let view = { x: MARGIN, y: MARGIN, k: 1 };
   let restoreView = store(VIEW_KEY) === 'free' ? readJson(VIEW_AT_KEY) : null;
-  // 'top': full size from the top-left; 'fit': everything on screen, or the window's width when that would be too small
-  // to read; null: where the user scrolled or zoomed to, put back once the sessions arrive.
   let follow = restoreView ? null : store(VIEW_KEY) === 'top' ? 'top' : 'fit';
   let restoreOpen = store(OPEN_KEY);
   let packW = 0;
@@ -510,8 +508,8 @@
       }
       if (!best) best = t;
       if (!best.fits && best.r.w * best.k > fullW + 0.5) best = atK(Math.max(TIGHT, fullW / best.r.w));
-      // a small change does not step the scale up and reshuffle the board
-      if (packK && packK < best.k && best.k <= packK * 1.16) {
+      // a small change does not step the scale up and reshuffle the board, unless that makes it readable again
+      if (packK && packK < best.k && best.k <= packK * 1.16 && (packK >= READABLE || best.k < READABLE)) {
         const t = atK(packK);
         if (t.fits) best = t;
         else best = atK(best.k);
@@ -549,7 +547,7 @@
   let savedView = '';
   function writeView() {
     saveTimer = 0;
-    if (follow || restoreView) return;
+    if (follow || restoreView || !worldW) return;
     const s = JSON.stringify({ x: view.x, y: view.y, k: view.k, pk: packK, pw: packW, ph: isFinite(packH) ? packH : 0, vw: viewport.clientWidth, vh: viewport.clientHeight });
     if (s === savedView) return;
     savedView = s;
@@ -704,13 +702,13 @@
   }
   // Zooming out stops once everything is on screen.
   function minZoom() {
-    const u = usable();
     if (!worldW) return MIN_ZOOM;
-    return Math.max(MIN_ZOOM, Math.min(view.k, (u.w - 2 * MARGIN) / worldW, (u.h - 2 * MARGIN) / worldH));
+    return Math.max(MIN_ZOOM, Math.min(view.k, fitScale(0)));
   }
-  function whole(k) {
+  function fitScale(slack) {
+    if (!worldW) return Infinity;
     const u = usable();
-    return worldW * k <= u.w - 2 * MARGIN + 0.5 && worldH * k <= u.h - 2 * MARGIN + 0.5;
+    return Math.min((u.w - 2 * MARGIN + slack) / worldW, (u.h - 2 * MARGIN + slack) / worldH);
   }
   // as a page reflows when the browser zooms out; zooming in keeps the arrangement, so the card being read stays put
   function reflow(py, k) {
@@ -723,7 +721,7 @@
   }
   function zoomAt(px, py, k) {
     const out = Math.max(MIN_ZOOM, k);
-    if (out < view.k && out < Math.min(READABLE, packK / 1.15) && !whole(out)) reflow(py, out);
+    if (out < view.k && out < Math.min(READABLE, packK / 1.15) && out > fitScale(0.5)) reflow(py, out);
     k = Math.max(minZoom(), Math.min(MAX_ZOOM, k));
     view.x = px - (px - view.x) * (k / view.k);
     view.y = py - (py - view.y) * (k / view.k);
@@ -731,11 +729,13 @@
     clampView();
   }
   function setFollow(mode) {
+    if (mode === 'fit' && follow !== 'fit') packK = 0;
     follow = mode;
     // what the user does before the sessions arrive wins over the view saved before the reload
     restoreView = null;
     store(VIEW_KEY, mode || 'free');
-    if (!mode) saveView();
+    // a spot saved in an earlier free view must not come back the next time the view goes free
+    if (mode) { savedView = ''; store(VIEW_AT_KEY, ''); } else saveView();
     paintFit();
   }
   function paintFit() {
@@ -1120,7 +1120,7 @@
     renderAlerts();
     renderBanner();
     const lanes = top.map((s) => layoutLane(s, all));
-    // a server that has just started sends no sessions at first, and an empty board would clamp the saved view away
+    // taken on an empty board, the restored view would not be put on screen once the sessions arrive
     const restoring = !!restoreView && lanes.length > 0;
     if (restoring) takeRestore();
     placeLanes(lanes);
@@ -1163,7 +1163,7 @@
     if (window.OVLive) window.OVLive.onSnap(snap);
     if (follow === 'fit') fit(!first);
     else if (follow === 'top') toTop(!first);
-    // a server restart can send no sessions for a moment; the user's spot waits for them instead of being clamped away
+    // an empty board would clamp the user's spot away, so it waits for the sessions to come back
     else if (lanes.length) {
       const before = view.x + ',' + view.y;
       clampView();
