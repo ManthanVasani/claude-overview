@@ -53,3 +53,8 @@ kept in `usage-index.json` beside the code; the first start reads your whole tra
 
 Token totals come from the transcripts on this machine. Runs started with `claude -p --no-session-persistence`
 write no transcript, so they are not counted.
+
+## License
+
+MIT, see [LICENSE](LICENSE). The bundled `vendor/d3.min.js` is [d3](https://d3js.org) under its own ISC license,
+in [vendor/d3-LICENSE](vendor/d3-LICENSE).
