@@ -1792,7 +1792,7 @@ function startUsage() {
     w = new Worker(path.join(__dirname, 'usage-scan.js'), { workerData: { root: PROJECTS_DIR, index: USAGE_INDEX, seed: path.join(__dirname, 'usage-index.json') } });
   } catch (e) { logOnce(e); return; }
   w.on('message', (m) => {
-    if (m.saveError) logOnce('Could not save the usage totals: ' + m.saveError);
+    if (m.notice) logOnce(m.notice);
     else usageSummary = m;
   });
   w.on('error', logOnce);

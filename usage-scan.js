@@ -52,7 +52,18 @@ function load() {
       if (f.startsWith(pre) && f.endsWith('.tmp') && Date.now() - fs.statSync(p).mtimeMs > TMP_STALE_MS) fs.unlinkSync(p);
     }
   } catch (e) { /* left for the next start */ }
-  files = readFiles(INDEX) || {};
+  files = readFiles(INDEX);
+  if (!files) {
+    files = {};
+    // it can be the only record of deleted transcripts, so a file this copy cannot read is kept aside
+    if (fs.existsSync(INDEX)) {
+      const aside = INDEX + '.unreadable-' + Date.now();
+      try {
+        fs.renameSync(INDEX, aside);
+        parentPort.postMessage({ notice: 'Could not read the usage totals, so they start again. The old file is kept at ' + aside });
+      } catch (e) { parentPort.postMessage({ notice: 'Could not keep the unreadable usage totals: ' + e.message }); }
+    }
+  }
   // a clone's old index holds totals of transcripts deleted since; only this folder's rows belong here
   const seed = readFiles(SEED) || {};
   for (const p in seed) {
@@ -76,7 +87,7 @@ function save() {
     fs.writeFileSync(tmp, JSON.stringify({ v: VERSION, files }), { mode: 0o600 });
     fs.renameSync(tmp, INDEX);
     unsaved = false;
-  } catch (e) { parentPort.postMessage({ saveError: e.message }); }
+  } catch (e) { parentPort.postMessage({ notice: 'Could not save the usage totals: ' + e.message }); }
   lastSave = now;
 }
 
