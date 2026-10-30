@@ -225,7 +225,9 @@ body.panel-open .alerts { right: calc(var(--panel) + 16px); }
 .c-working, .c-running { --c: var(--work); }
 .c-your-turn { --c: var(--turn); }
 .c-needs-you { --c: var(--need); }
-.c-error, .c-retrying, .c-died, .c-failed, .c-lost { --c: var(--bad); --ct: var(--bad-t); }
+.c-error, .c-retrying, .c-died, .c-failed, .c-lost { --c: var(--bad); }
+/* on the card only: a lane carries its session's state class too */
+.node.c-error, .node.c-retrying, .node.c-died, .node.c-failed, .node.c-lost { --ct: var(--bad-t); }
 .c-waiting { --c: var(--wait); }
 .c-stalled { --c: var(--warn); }
 .c-wf { --c: var(--wf); }
@@ -278,7 +280,7 @@ body.panel-open .alerts { right: calc(var(--panel) + 16px); }
 }
 .c-done > .card, .c-stopped > .card, .c-ended > .card { background: #0c1424; border-color: rgba(148, 163, 184, .09); }
 .c-done > .card:hover, .c-stopped > .card:hover, .c-ended > .card:hover { background: var(--card-hi); border-color: var(--border-hi); }
-.c-done .ttl, .c-stopped .ttl, .c-ended .ttl { color: var(--text-2); }
+.c-done > .card .ttl, .c-stopped > .card .ttl, .c-ended > .card .ttl { color: var(--text-2); }
 @keyframes alarm { 50% { box-shadow: 0 0 0 3px rgba(244, 114, 182, .2), 0 0 26px rgba(244, 114, 182, .32); } }
 @keyframes alarmBad { 50% { box-shadow: 0 0 0 3px rgba(244, 63, 94, .22), 0 0 26px rgba(244, 63, 94, .35); } }
 .node.sel > * { border-color: var(--wait) !important; box-shadow: 0 0 0 1px var(--wait), 0 0 26px rgba(96, 165, 250, .25); }
@@ -308,7 +310,7 @@ body.panel-open .alerts { right: calc(var(--panel) + 16px); }
 .act .tm { flex: none; color: var(--text-3); font-weight: 400; }
 .act .k { color: var(--text-3); font-weight: 400; }
 .act.wrap .tx { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.38; }
-.c-done .act, .c-stopped .act, .c-ended .act { color: var(--text-2); }
+.c-done > .card .act, .c-stopped > .card .act, .c-ended > .card .act { color: var(--text-2); }
 .line { margin-top: 5px; color: var(--text-2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .line .k { color: var(--text-3); margin-right: 6px; }
 .meta { margin-top: 4px; color: var(--text-3); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -344,6 +346,7 @@ body.panel-open .alerts { right: calc(var(--panel) + 16px); }
 .c-failed > .shell, .c-died > .shell { border-color: rgba(244, 63, 94, .45); color: var(--bad-t); }
 .c-failed > .shell .tm, .c-died > .shell .tm { color: var(--bad); }
 .c-done > .shell, .c-stopped > .shell, .c-ended > .shell { background: rgba(12, 20, 36, .92); border-color: rgba(148, 163, 184, .09); color: var(--text-3); }
+.c-done > .shell:hover, .c-stopped > .shell:hover, .c-ended > .shell:hover { border-color: var(--border-hi); background: var(--card-hi); }
 .c-running > .shell { border-color: rgba(52, 211, 153, .22); }
 .more {
   display: flex;
