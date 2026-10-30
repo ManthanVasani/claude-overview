@@ -1689,7 +1689,8 @@
       snap = d;
       connected = true;
       lostAt = 0;
-      render();
+      // a painting failure must not silence the alerts of someone away from the page
+      try { render(); } finally { if (window.OVAlerts) window.OVAlerts.onSnap(d); }
     };
     const toLive = (type) => (ev) => {
       let d;
@@ -1704,6 +1705,7 @@
     es.onerror = () => {
       if (connected) lostAt = Date.now();
       connected = false;
+      if (window.OVAlerts) window.OVAlerts.onLost();
       renderHud();
       setTimeout(renderBanner, 4500);
     };
