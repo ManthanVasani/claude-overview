@@ -1,7 +1,7 @@
 {
   "name": "claude-overview",
   "version": "0.2.0",
-  "description": "A live dashboard for every Claude Code session on your machine: agents, workflows, background shells, tool calls and token usage. Zero tokens, Claude data read-only, no npm dependencies.",
+  "description": "A live dashboard for every Claude Code session on your machine: agents, workflows, background shells, tool calls, token usage, and alerts when a session needs you. Zero tokens, Claude data read-only, no npm dependencies.",
   "keywords": [
     "claude-code",
     "claude",
