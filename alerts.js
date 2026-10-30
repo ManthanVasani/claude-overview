@@ -20,6 +20,7 @@
   let latest = null;
   let seen = null;
   let boot = null;
+  let lastSnap = 0;
   const states = new Map();
   const settling = new Map();
 
@@ -42,11 +43,12 @@
   const token = (name, fallback) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
   const okIcon = iconEl ? iconEl.getAttribute('href') : '';
   const needIcon = dot(token('--need', '#f472b6'));
+  const lostIcon = dot(token('--text-2', '#b9c5d6'));
 
   function setTitle(needs) {
     const t = needs ? '(' + needs + ') ' + title : title;
     if (document.title !== t) document.title = t;
-    const href = needs ? needIcon : okIcon;
+    const href = needs === '?' ? lostIcon : needs ? needIcon : okIcon;
     if (iconEl && iconEl.getAttribute('href') !== href) iconEl.setAttribute('href', href);
   }
 
@@ -60,12 +62,13 @@
     };
   }
 
-  // an agent's permission prompt also puts its session into needs-you, with the same start time
-  function keyOf(a) { return a.level === 'needs' ? 'needs|' + a.sid + '|' + a.since : a.level + '|' + a.node + '|' + a.since; }
-  function wanted(a) {
-    if (a.level === 'needs') return prefs.needs;
-    return prefs.problems && !a.quiet;
+  function keyOf(a) {
+    // an agent's permission prompt also puts its session into needs-you, with the same start time
+    if (a.level === 'needs') return 'needs|' + a.sid + '|' + a.since;
+    // an agent's end time can move
+    return a.node.startsWith('s:') ? a.node + '|' + a.since : a.node;
   }
+  function wanted(a) { return a.level === 'needs' ? prefs.needs : prefs.problems; }
   function headOf(a) { return a.title + (a.session && a.session !== a.title ? ' · ' + a.session : ''); }
 
   function announce(list) {
@@ -85,9 +88,10 @@
     for (const s of list) {
       ids.add(s.id);
       const prev = states.get(s.id);
-      states.set(s.id, s.state);
+      // a prompt can come during a turn or after it, so it says nothing about whether one is running
+      if (s.state !== 'needs-you') states.set(s.id, s.state);
       if (s.state !== 'your-turn') { unsettle(s.id); continue; }
-      if (prev !== 'working' && prev !== 'retrying' && prev !== 'needs-you') continue;
+      if (prev !== 'working' && prev !== 'retrying') continue;
       settling.set(s.id, setTimeout(() => {
         settling.delete(s.id);
         const now = latest && (latest.sessions || []).find((x) => x.id === s.id);
@@ -110,23 +114,28 @@
     latest = snap;
     setTitle((snap.totals || {}).needsYou);
     if (btn.classList.contains('on') !== live()) paint();
-    // a restarted server dates the deaths it finds again, so their keys would look new
-    if (snap.boot !== boot) { boot = snap.boot; seen = null; }
     const baseline = !seen;
     if (baseline) seen = new Map();
+    // a restarted server dates the deaths it finds again, so only its needs rows can be told from old ones
+    const restarted = snap.boot !== boot;
+    boot = snap.boot;
     const t = Date.now();
     const fresh = [];
     for (const a of snap.attention || []) {
+      // not kept in seen: a retrying agent's quiet row has the key its failure will have
+      if (a.quiet) continue;
       const k = keyOf(a);
-      if (!baseline && !seen.has(k) && wanted(a)) fresh.push(a);
+      if (!baseline && !seen.has(k) && wanted(a) && (!restarted || a.level === 'needs')) fresh.push(a);
       seen.set(k, t);
     }
-    for (const [k, at] of seen) if (t - at > FORGET_MS) seen.delete(k);
+    // aged from the snapshot before: a quiet board can send nothing for longer than this, and then miss a row once
+    for (const [k, at] of seen) if (lastSnap - at > FORGET_MS) seen.delete(k);
+    lastSnap = t;
     announce(fresh);
     watchTurns(snap.sessions || []);
   }
-  // a count from a dead stream would keep claiming that sessions need you
-  function onLost() { setTitle(0); }
+  // once the stream is gone, neither the last count nor an all-clear is true
+  function onLost() { setTitle('?'); }
 
   function paint() {
     const p = permission();
@@ -192,12 +201,16 @@
     prefs[box.dataset.pref] = box.checked;
     save();
   });
-  // capture, so Escape closes the menu and not the detail panel behind it
+  // capture, so Escape closes the menu and not the detail panel behind it, and no board shortcut moves the bell
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape' || menu.hidden) return;
+    if (menu.hidden || e.ctrlKey || e.metaKey || e.altKey) return;
     e.stopPropagation();
-    closeMenu(true);
+    if (e.key === 'Escape') closeMenu(true);
   }, true);
+  // keys are held back while it is open, so it must not stay open behind the focus
+  document.addEventListener('focusin', (e) => {
+    if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) closeMenu(false);
+  });
   document.addEventListener('pointerdown', (e) => {
     if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) closeMenu(false);
   });

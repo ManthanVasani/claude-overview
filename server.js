@@ -1605,14 +1605,14 @@ function sessionView(S, now, agents, workflows, shells, blocked) {
 function attentionFor(v, now) {
   const out = [];
   const sid = v.id;
-  // no desktop alert for quiet rows: a retry or a stall can clear by itself, a failed shell is its session's
-  // to handle, and what ended with its session comes with the session's own alert or your own restart
-  const add = (level, node, title, text, since, quiet) => out.push({ level, sid, node, title, text, since: since || null, session: v.name, quiet: !!quiet });
+  // no desktop alert for quiet rows: nobody answers a headless run, and a nested session's problems are its parent's
+  const add = (level, node, title, text, since, quiet) => out.push({ level, sid, node, title, text, since: since || null, session: v.name, quiet: !!(quiet || v.headless || (v.parentSid && level !== 'needs')) });
+  const lostWork = [...v.agents, ...v.workflows].some((x) => x.state === 'died' && (!x.doneAt || x.doneAt >= v.since));
   if (v.state === 'needs-you') add('needs', 's:' + sid, v.name, v.act ? v.act.label : 'Waiting for you', v.act && v.act.since);
   if (v.state === 'error') add('error', 's:' + sid, v.name, 'Stopped: ' + v.reason, v.since);
   if (v.state === 'retrying') add('error', 's:' + sid, v.name, v.trouble.text, v.trouble.since, true);
   if (v.state === 'died' && now - v.lastWrite < ATTENTION_MS * 6) add('error', 's:' + sid, v.name, v.reason + ' (pid ' + v.pid + ')', v.since);
-  if (v.state === 'ended' && now - v.lastWrite < ATTENTION_MS) add('warn', 's:' + sid, v.name, v.reason, v.since);
+  if (v.state === 'ended' && now - v.lastWrite < ATTENTION_MS) add('warn', 's:' + sid, v.name, v.reason, v.since, !lostWork);
   if (v.trouble && v.trouble.kind === 'stalled') add('warn', 's:' + sid, v.name, 'No activity while working', v.trouble.since, true);
   for (const a of v.agents) {
     const node = 'a:' + sid + ':' + a.id;
