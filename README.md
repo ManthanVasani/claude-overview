@@ -38,8 +38,8 @@ Then open http://127.0.0.1:3100/.
 - Click a card to see what it is doing, what it has touched and what failed.
 - The timeline at the bottom shows every tool call: 15m, 1h, 3h, or Live. T folds it away.
 - Usage, or the U key, opens token totals by day, model, session and folder, and the plan limits of each cswap account.
-- A reload keeps how you left it: zoom and scroll, the open panel, expanded groups, the timeline and the right-hand
-  column.
+- A reload keeps how you left it: the zoom (and the scroll, in a window of the same size), the open panel, expanded
+  groups, the timeline and the right-hand column.
 
 ![The detail panel of a running agent](docs/screenshots/details.png)
 

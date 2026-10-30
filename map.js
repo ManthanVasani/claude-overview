@@ -14,7 +14,7 @@
   const MARGIN = 28;
   const MAX_SHELLS = 5;
   const MAX_DONE = 3;
-  // below this the text is too small to read, so Fit scrolls the board instead of shrinking it
+  // below this the text is too small to read
   const READABLE = 0.85;
   // a session wider than the window would otherwise scroll sideways, which is harder to notice than a little shrink
   const TIGHT = 0.75;
@@ -58,7 +58,6 @@
   const prevSteps = new Map();
   const prevStates = new Map();
   const expanded = new Set([].concat(readJson(EXPANDED_KEY) || []).filter((k) => typeof k === 'string'));
-  const shownOpen = new Set();
   let selected = null;
   let hoverId = null;
   let onlyActive = store(ACTIVE_KEY) === '1';
@@ -248,7 +247,6 @@
 
   function moreNode(parent, key, hidden, label, running) {
     const open = expanded.has(key);
-    if (open) shownOpen.add(key);
     return mk(key, 'more', { key, open, label: open ? 'Show fewer' : '+' + hidden + ' ' + label + (running ? ' · ' + running + ' running' : '') }, parent.sid);
   }
 
@@ -486,11 +484,13 @@
     const bottom = 14 + alertsEl.offsetHeight;
     return { x0: (left - 16 - MARGIN) / k, y1: (bottom + 16 - res.top - MARGIN) / k };
   }
+  function fullWidth() {
+    return Math.max(320, viewport.clientWidth - 2 * MARGIN);
+  }
   function placeLanes(lanes) {
-    const vw = viewport.clientWidth;
     const vh = viewport.clientHeight;
     const res = reserved();
-    const fullW = Math.max(320, vw - 2 * MARGIN);
+    const fullW = fullWidth();
     const availH = Math.max(240, vh - 2 * MARGIN - res.top - res.bottom);
     // lanes get the screen's shape at scale k, so a tall session spreads into the width a wide screen has spare
     const at = (k, maxW, maxH) => {
@@ -574,7 +574,8 @@
     const same = Math.abs(r.vw - viewport.clientWidth) <= 40 && Math.abs(r.vh - viewport.clientHeight) <= 40;
     const k = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, r.k));
     if (same) {
-      packW = r.pw;
+      // a window a few pixels narrower counts as the same, but the packing width saved for it may not fit
+      packW = Math.min(r.pw, fullWidth() / r.pk);
       packH = r.ph > 0 ? r.ph : Infinity;
       packK = r.pk;
       view = { x: r.x, y: r.y, k };
@@ -1126,7 +1127,6 @@
     top.sort((a, b) => (b.alive - a.alive) || (a.startedAt || 0) - (b.startedAt || 0) || (a.id < b.id ? -1 : 1));
     index.clear();
     rawIndex.clear();
-    shownOpen.clear();
     renderAlerts();
     renderBanner();
     const lanes = top.map((s) => layoutLane(s, all));
@@ -1349,20 +1349,24 @@
     const r = rawIndex.get(id);
     if (!r) return;
     if (onlyActive && !active(r)) setOnlyActive(false);
-    for (let p = r.parent; p; p = p.parent) {
-      for (const key of [p.id + '|sh', p.id + '|fin']) {
-        expanded.delete(key);
-        expanded.add(key);
-      }
+    const added = [];
+    for (let c = r; c.parent; c = c.parent) {
+      if (c.kind !== 'shell' && active(c)) continue;
+      const key = c.parent.id + (c.kind === 'shell' ? '|sh' : '|fin');
+      if (!expanded.has(key)) added.push(key);
+      expanded.delete(key);
+      expanded.add(key);
     }
-    saveExpanded();
     render();
+    // kept for a group not there yet, the key would open that group the day it forms
+    for (const key of added) if (!index.has(key)) expanded.delete(key);
+    saveExpanded();
   }
   // the newest keys, so groups of sessions long gone fall off the end without closing one still on the board
   function saveExpanded() {
     for (const k of expanded) {
       if (expanded.size <= 200) break;
-      if (!shownOpen.has(k)) expanded.delete(k);
+      if (!index.has(k)) expanded.delete(k);
     }
     store(EXPANDED_KEY, JSON.stringify([...expanded]));
   }

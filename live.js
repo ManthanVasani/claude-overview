@@ -370,7 +370,7 @@
   grip.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     e.preventDefault();
-    gripDrag = { y: e.clientY, h: folded ? HEAD_H : dockH, id: e.pointerId };
+    gripDrag = { y: e.clientY, h: folded ? HEAD_H : dockH, id: e.pointerId, dock: dockH };
     grip.setPointerCapture(e.pointerId);
     document.body.classList.add('resizing');
   });
@@ -387,7 +387,9 @@
   });
   function endGrip() {
     if (!gripDrag) return;
-    if (gripDrag.moved) {
+    // a drag that ends folded is a fold, not a height the user picked
+    if (folded) dockH = gripDrag.dock;
+    else if (gripDrag.moved) {
       userDock = true;
       store(KEYS.dock, String(dockH));
     }
@@ -1438,9 +1440,9 @@
       shown = windowSteps(w);
       rows = buildRows(shown, w);
       // only this once on its own: a timeline that followed its rows would move the board every time one came or went
-      if (!sized && histIn && rows.length) {
+      if (!sized && histIn) {
         sized = true;
-        if (!userDock && !folded && autoDock() !== dockH) {
+        if (rows.length && !userDock && !folded && autoDock() !== dockH) {
           layout();
           OV.relayout(true);
         }
