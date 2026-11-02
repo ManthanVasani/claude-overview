@@ -90,7 +90,7 @@
       ids.add(s.id);
       const prev = states.get(s.id);
       // a wait can come during a turn or after it, so it says nothing about whether one is running
-      if (s.state !== 'needs-you' && !s.waiting) states.set(s.id, s.state);
+      if (s.state !== 'needs-you') states.set(s.id, s.state);
       if (s.state !== 'your-turn') { unsettle(s.id); continue; }
       if (prev !== 'working' && prev !== 'retrying') continue;
       settling.set(s.id, setTimeout(() => {

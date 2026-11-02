@@ -84,6 +84,7 @@ const WAIT_TEXT = {
 };
 const AGENT_TOOLS = new Set(['Agent', 'Task']);
 const TOOL_SHELL_RE = /\/shell-snapshots\//;
+const SHELL_HEAD_RE = /eval '([^'\n]*)/;
 // older versions are not known to write the waiting status
 const WAITING_FROM = [2, 1, 286];
 const INSTANT_TOOLS = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit']);
@@ -983,7 +984,7 @@ function scanProcs(S) {
   for (const p of fresh) {
     const m = /\/tasks\/([A-Za-z0-9_-]+)\.output$/.exec(outs.get(p.pid) || '');
     if (m) p.task = m[1];
-    else p.cmd = cmdOf(p.pid);
+    p.cmd = cmdOf(p.pid);
     S.procs.set(p.pid, p);
   }
   for (const pid of S.procs.keys()) if (!seen.has(pid)) S.procs.delete(pid);
@@ -1013,17 +1014,32 @@ function matchForeground(S, now) {
   const used = new Set();
   const running = new Set();
   const blocked = [];
-  for (const { c, p } of fg) {
-    let best = null;
+  const free = (proc, p) => !used.has(proc.pid) && !(proc.task && S.tasks.has(proc.task)) && proc.start >= p.at - 3000;
+  const own = new Map();
+  for (const { p } of fg) {
+    if (typeof p.cmd !== 'string') continue;
+    // Claude Code's tool shell runs the command as eval '...', with each quote in it written as '"'"'
+    const quoted = "eval '" + p.cmd.replace(/'/g, `'"'"'`) + "'";
     for (const proc of S.procs.values()) {
-      if (used.has(proc.pid) || (proc.task && S.tasks.has(proc.task))) continue;
-      if (proc.start < p.at - 3000) continue;
-      if (!best || proc.start < best.start) best = proc;
+      if (free(proc, p) && proc.cmd && proc.cmd.indexOf(quoted) !== -1) { own.set(p, proc); used.add(proc.pid); break; }
+    }
+  }
+  for (const { c, p } of fg) {
+    let best = own.get(p) || null;
+    if (!best) {
+      const head = String(p.cmd || '').split(/['\n]/)[0].trim();
+      for (const proc of S.procs.values()) {
+        if (!free(proc, p)) continue;
+        const m = proc.cmd && SHELL_HEAD_RE.exec(proc.cmd);
+        // a shell that starts beside a waiting call can be running another call
+        if (m && m[1].trim() !== head) continue;
+        if (!best || proc.start < best.start) best = proc;
+      }
     }
     if (best) {
       used.add(best.pid);
       // a hook, such as one for permission requests, can run while its call waits
-      if (TOOL_SHELL_RE.test(best.cmd || '')) running.add(p);
+      if (best.task || TOOL_SHELL_RE.test(best.cmd || '')) running.add(p);
       best.fgOwner = c.owner;
     } else if (now - p.at > PERMISSION_MS && first.get(c) === p) blocked.push({ c, p, since: p.at + PERMISSION_MS });
   }
@@ -1036,9 +1052,10 @@ function matchForeground(S, now) {
 }
 
 // Claude Code does not say which call its prompt is for
-function waitedOn(S, running) {
+function waitedOn(S, running, now, shellOwners) {
   const reg = S.reg;
   if (reg.status !== 'waiting' || reg.waitingFor !== 'permission prompt') return [];
+  for (const a of S.agents.values()) if (a.tail && a.conv) a.conv.ended = agentStatus(S, a, now, shellOwners, []).state !== 'running';
   const since = (reg.startedAt || 0) - 2000;
   let one = null;
   for (const c of liveConvs(S)) {
@@ -1055,9 +1072,9 @@ function waitedOn(S, running) {
 
 function writesWaiting(reg) {
   if (!reg.status) return false;
-  const v = String(reg.version || '').split('.').map(Number);
-  if (v.length < 3 || v.some(isNaN)) return true;
-  for (let i = 0; i < 3; i++) if (v[i] !== WAITING_FROM[i]) return v[i] > WAITING_FROM[i];
+  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(String(reg.version || ''));
+  if (!m) return true;
+  for (let i = 0; i < 3; i++) if (Number(m[i + 1]) !== WAITING_FROM[i]) return Number(m[i + 1]) > WAITING_FROM[i];
   return true;
 }
 
@@ -1571,12 +1588,19 @@ function sessionView(S, now, agents, workflows, shells, blocked) {
   const pend = [...c.pending.values()].sort((a, b) => b.at - a.at);
   const ask = pend.find((p) => NEEDS_YOU_TOOLS.has(p.name) && p.at >= c.promptAt && p.at >= (reg.startedAt || 0) - 2000);
   const lastWrite = Math.max(c.lastAt, S.tail ? S.tail.mtimeMs : 0, S.mt || 0);
-  if (reg.status === 'busy' || reg.status === 'idle' || reg.status === 'shell') S.held = reg.status;
+  if (reg.status === 'busy' || reg.status === 'idle' || reg.status === 'shell') {
+    S.held = reg.status;
+    S.heldAt = reg.statusUpdatedAt || 0;
+  }
   let status = reg.status;
   // Claude Code reports a screen you opened, such as /model, as a dialog, even after the turn under it ends
   if (reg.status === 'waiting' && reg.waitingFor === 'dialog open') {
-    const over = !c.pending.size && (!c.promptAt || (c.lastStop === 'end_turn' && c.lastActAt >= c.promptAt) || c.interruptedAt >= c.promptAt);
-    status = S.held === 'idle' || S.held === 'shell' ? S.held : over ? 'idle' : 'busy';
+    const born = (reg.startedAt || 0) - 2000;
+    // a command or a notification starts a turn without setting a prompt time
+    const from = S.held ? S.heldAt : born;
+    const ended = (c.lastStop === 'end_turn' && c.lastActAt > from) || c.interruptedAt > from;
+    const quiet = S.held !== 'busy' && !(c.promptAt > from) && !(c.lastActAt > from);
+    status = quiet ? S.held || 'idle' : !pend.some((p) => p.at >= born) && ended ? 'idle' : 'busy';
   }
   if (!status) status = now - lastWrite < 60000 ? 'busy' : 'idle';
   // a whole turn can start and end between two polls
@@ -1718,9 +1742,8 @@ function pollSession(S, now) {
     backfillTasks(S, now);
   }
   const shells = shellViews(S, now);
-  for (const a of S.agents.values()) if (a.tail && a.conv) a.conv.ended = agentStatus(S, a, now, shells.owners, []).state !== 'running';
   // the timing guess can flag a call that is not waiting for you
-  const blocked = writesWaiting(S.reg) ? waitedOn(S, fg.running) : fg.blocked;
+  const blocked = writesWaiting(S.reg) ? waitedOn(S, fg.running, now, shells.owners) : fg.blocked;
   const agents = S.dir ? agentViews(S, now, shells.owners, blocked) : [];
   return sessionView(S, now, agents, workflows, shells.list, blocked);
 }
