@@ -17,8 +17,8 @@ another window? claude-overview puts every session on one live board in your bro
 npx claude-overview
 ```
 
-Then open http://127.0.0.1:3100/. It runs until you press Ctrl + C or close that terminal. To use it again later, such
-as after a restart, run the same command and open the same address.
+Then open http://127.0.0.1:3100/. It runs until you press Ctrl + C. [Running it](#running-it) covers starting it
+again later and keeping it in the background.
 
 ## What you get
 
@@ -48,14 +48,27 @@ as after a restart, run the same command and open the same address.
 - The sessions of one Claude Code folder: `~/.claude`, or `$CLAUDE_CONFIG_DIR` when that is set as it starts. If you
   run Claude Code with `CLAUDE_CONFIG_DIR`, start claude-overview with the same value.
 
-## More ways to run it
+## Running it
 
-- `npm install -g claude-overview` keeps it installed, so `claude-overview` starts it.
-- Or clone this repository and run `./overview start` in its folder to start it in the background.
-  `./overview status` and `./overview stop` check on it and stop it.
-- To use another port, set `CLAUDE_OVERVIEW_PORT` before starting it.
-- It does not start again by itself after a restart: start it again the same way. `./overview start` is safe to run
-  when it is already running; it says so.
+Each time you want the board, start it one of these ways and open http://127.0.0.1:3100/.
+
+- **With npx:** `npx claude-overview` runs it in that terminal until you press Ctrl + C or close the terminal.
+- **Installed:** after `npm install -g claude-overview`, `claude-overview` starts it the same way.
+- **In the background**, from a clone of this repository: `./overview start` in its folder. It keeps running after you
+  close the terminal. `./overview status` says whether it is running and `./overview stop` stops it. Starting it while
+  it runs only says so.
+
+It does not start by itself after a restart of the computer or of WSL. If it is still running and only the page was
+closed, open the address again. It keeps its token totals between runs, and the page keeps how you left the board.
+
+To start it with every new terminal, put the background start in your shell's startup file, such as `~/.bashrc` or
+`~/.zshrc`, with the path of your clone:
+
+```
+/path/to/claude-overview/overview start > /dev/null
+```
+
+To use another port, set `CLAUDE_OVERVIEW_PORT` before starting it.
 
 ## Using it
 
