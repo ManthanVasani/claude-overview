@@ -65,6 +65,8 @@ const STALL_MS = 8 * MIN;
 const LOST_MS = 2 * HOUR;
 const RETRY_FRESH_MS = 10 * MIN;
 const PERMISSION_MS = 15000;
+// a prompt comes right after its call and that call's hooks
+const PROMPT_LEAD_MS = 5000;
 const FG_LIMIT_MS = 11 * MIN;
 const DEATH_GRACE_MS = 20000;
 const FINAL_SETTLE_MS = 5000;
@@ -1031,8 +1033,8 @@ function matchForeground(S, now) {
       for (const proc of S.procs.values()) {
         if (!free(proc, p)) continue;
         const m = proc.cmd && SHELL_HEAD_RE.exec(proc.cmd);
-        // a shell that starts beside a waiting call can be running another call
-        if (m && m[1].trim() !== head) continue;
+        // a shell that starts beside a waiting call can be running another call; ps can change a newline in its text
+        if (m && PROC_FS && m[1].trim() !== head) continue;
         if (!best || proc.start < best.start) best = proc;
       }
     }
@@ -1056,7 +1058,7 @@ function waitedOn(S, running, now, shellOwners) {
   const reg = S.reg;
   if (reg.status !== 'waiting' || reg.waitingFor !== 'permission prompt') return [];
   for (const a of S.agents.values()) if (a.tail && a.conv) a.conv.ended = agentStatus(S, a, now, shellOwners, []).state !== 'running';
-  const since = (reg.startedAt || 0) - 2000;
+  const since = Math.max((reg.startedAt || 0) - 2000, (reg.statusUpdatedAt || 0) - PROMPT_LEAD_MS);
   let one = null;
   for (const c of liveConvs(S)) {
     // an agent stopped in the middle of a call keeps that call open
