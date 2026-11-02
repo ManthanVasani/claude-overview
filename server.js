@@ -1073,7 +1073,7 @@ function waitedOn(S, running, now, shellOwners) {
 function writesWaiting(reg) {
   if (!reg.status) return false;
   const m = /^(\d+)\.(\d+)\.(\d+)/.exec(String(reg.version || ''));
-  if (!m) return true;
+  if (!m) return false;
   for (let i = 0; i < 3; i++) if (Number(m[i + 1]) !== WAITING_FROM[i]) return Number(m[i + 1]) > WAITING_FROM[i];
   return true;
 }
@@ -1598,13 +1598,13 @@ function sessionView(S, now, agents, workflows, shells, blocked) {
     const born = (reg.startedAt || 0) - 2000;
     // a command or a notification starts a turn without setting a prompt time
     const from = S.held ? S.heldAt : born;
-    const ended = (c.lastStop === 'end_turn' && c.lastActAt > from) || c.interruptedAt > from;
+    const ended = (c.lastStop === 'end_turn' && c.lastActAt > from && !(c.promptAt > c.lastActAt)) || c.interruptedAt > from;
     const quiet = S.held !== 'busy' && !(c.promptAt > from) && !(c.lastActAt > from);
     status = quiet ? S.held || 'idle' : !pend.some((p) => p.at >= born) && ended ? 'idle' : 'busy';
   }
   if (!status) status = now - lastWrite < 60000 ? 'busy' : 'idle';
   // a whole turn can start and end between two polls
-  if (status === 'busy' || (reg.status !== 'waiting' && reg.statusUpdatedAt > S.idleAt && c.lastActAt > S.idleAt)) S.idleAt = 0;
+  if (status === 'busy' || (c.lastActAt > S.idleAt && (reg.status === 'waiting' || reg.statusUpdatedAt > S.idleAt))) S.idleAt = 0;
   if ((status === 'idle' || status === 'shell') && !S.idleAt) S.idleAt = (reg.status === 'waiting' ? c.lastActAt : reg.statusUpdatedAt) || lastWrite;
   const agentPerm = agents.find((a) => a.trouble && a.trouble.kind === 'permission');
   let state;
