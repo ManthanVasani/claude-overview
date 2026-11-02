@@ -34,8 +34,18 @@ Then open http://127.0.0.1:3100/. It runs until you press Ctrl + C.
 
 - Linux, WSL or macOS. macOS support has not been tested on a real Mac yet.
 - [Node.js](https://nodejs.org) 20 or later. It has no npm dependencies.
-- Claude Code, in VS Code or in the terminal.
+- Claude Code, in VS Code or in the terminal. With Claude Code's default folder there is nothing to set up: it finds
+  each session in the files Claude Code writes.
 - Optional: [cswap](https://github.com/realiti4/claude-swap), to show the plan limits of each account.
+
+## Which sessions it sees
+
+- The Claude Code sessions on the machine it runs on. On Windows, run it in WSL: it sees the sessions that run in WSL,
+  such as in a WSL terminal or in VS Code connected to WSL, and not ones that run on Windows itself.
+- Sessions running on another machine or in a container, such as over SSH, in a dev container or in the cloud, do
+  not show.
+- The sessions of one Claude Code folder: `~/.claude`, or `$CLAUDE_CONFIG_DIR` when that is set as it starts. If you
+  run Claude Code with `CLAUDE_CONFIG_DIR`, start claude-overview with the same value.
 
 ## More ways to run it
 
