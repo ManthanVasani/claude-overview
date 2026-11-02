@@ -75,6 +75,13 @@ const EV_KEEP_MS = 3 * HOUR;
 const EV_HISTORY_MS = 3 * HOUR;
 const EV_MAX = 60000;
 const NEEDS_YOU_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode']);
+const WAIT_TEXT = {
+  'permission prompt': 'Waiting for your permission',
+  'sandbox request': 'Waiting for your permission',
+  'worker request': 'Waiting for your permission',
+  'input needed': 'Waiting for your answer',
+  'goal proposal': 'Waiting for your answer',
+};
 const AGENT_TOOLS = new Set(['Agent', 'Task']);
 const INSTANT_TOOLS = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit']);
 const TASK_ID_RE = /(?:background with ID: |background \(ID: |Monitor started \(task )([A-Za-z0-9_-]+)/;
@@ -1001,6 +1008,7 @@ function matchForeground(S, now) {
   }
   fg.sort((x, y) => x.p.at - y.p.at);
   const used = new Set();
+  const running = new Set();
   const blocked = [];
   for (const { c, p } of fg) {
     let best = null;
@@ -1011,15 +1019,36 @@ function matchForeground(S, now) {
     }
     if (best) {
       used.add(best.pid);
+      running.add(p);
       best.fgOwner = c.owner;
-    } else if (now - p.at > PERMISSION_MS && first.get(c) === p) blocked.push({ c, p });
+    } else if (now - p.at > PERMISSION_MS && first.get(c) === p) blocked.push({ c, p, since: p.at + PERMISSION_MS });
   }
   for (const c of liveConvs(S)) {
     for (const p of c.pending.values()) {
-      if (INSTANT_TOOLS.has(p.name) && first.get(c) === p && now - p.at > PERMISSION_MS) blocked.push({ c, p });
+      if (INSTANT_TOOLS.has(p.name) && first.get(c) === p && now - p.at > PERMISSION_MS) blocked.push({ c, p, since: p.at + PERMISSION_MS });
     }
   }
-  return { used, blocked };
+  return { used, running, blocked };
+}
+
+// Claude Code does not say which call its prompt is for
+function waitedOn(S, running) {
+  const reg = S.reg;
+  if (reg.status !== 'waiting' || (reg.waitingFor !== 'permission prompt' && reg.waitingFor !== 'sandbox request')) return [];
+  const since = (reg.startedAt || 0) - 2000;
+  // the call a prompt waits for is written just before the prompt
+  const until = (reg.statusUpdatedAt || Infinity) + 1000;
+  let one = null;
+  for (const c of liveConvs(S)) {
+    // an agent stopped in the middle of a call keeps that call open
+    if (c.ended) continue;
+    for (const p of c.pending.values()) {
+      if (p.bg || p.at < since || p.at > until || AGENT_TOOLS.has(p.name) || running.has(p)) continue;
+      if (one) return [];
+      one = { c, p, since: reg.statusUpdatedAt || p.at };
+    }
+  }
+  return one ? [one] : [];
 }
 
 function noteRunningTasks(S, now, used) {
@@ -1292,7 +1321,7 @@ function readAgents(S, now) {
 
 function permissionOf(blocked, conv) {
   const b = blocked.find((x) => x.c === conv);
-  return b ? { kind: 'permission', text: 'Waiting for your permission: ' + b.p.label, since: b.p.at + PERMISSION_MS, tool: b.p.name } : null;
+  return b ? { kind: 'permission', text: 'Waiting for your permission: ' + b.p.label, since: b.since, tool: b.p.name } : null;
 }
 
 function troubleOf(c, now, blocked, hasProc) {
@@ -1348,6 +1377,7 @@ function agentViews(S, now, shellOwners, blocked) {
   for (const a of S.agents.values()) {
     if (!a.tail) continue;
     const st = agentStatus(S, a, now, shellOwners, blocked);
+    a.conv.ended = st.state !== 'running';
     const keep = st.state === 'running' || st.state === 'waiting' ? Infinity : PROBLEM_STATES.has(st.state) ? PROBLEM_VISIBLE_MS : DONE_VISIBLE_MS;
     if (now - (st.doneAt || now) > keep) {
       retireAgent(a);
@@ -1532,8 +1562,13 @@ function sessionView(S, now, agents, workflows, shells, blocked) {
   const pend = [...c.pending.values()].sort((a, b) => b.at - a.at);
   const ask = pend.find((p) => NEEDS_YOU_TOOLS.has(p.name) && p.at >= c.promptAt && p.at >= (reg.startedAt || 0) - 2000);
   const lastWrite = Math.max(c.lastAt, S.tail ? S.tail.mtimeMs : 0, S.mt || 0);
-  let status = reg.status;
+  if (reg.status === 'busy' || reg.status === 'idle' || reg.status === 'shell') S.held = reg.status;
+  // Claude Code reports a screen you opened, such as /model, as a dialog too
+  let status = reg.status === 'waiting' && reg.waitingFor === 'dialog open' ? S.held || 'idle' : reg.status;
   if (!status) status = now - lastWrite < 60000 ? 'busy' : 'idle';
+  // a whole turn can start and end between two polls
+  if (status === 'busy' || (reg.status !== 'waiting' && c.promptAt > S.idleAt && reg.statusUpdatedAt > c.promptAt)) S.idleAt = 0;
+  if ((status === 'idle' || status === 'shell') && !S.idleAt) S.idleAt = reg.statusUpdatedAt || lastWrite;
   const agentPerm = agents.find((a) => a.trouble && a.trouble.kind === 'permission');
   let state;
   let act = null;
@@ -1545,10 +1580,12 @@ function sessionView(S, now, agents, workflows, shells, blocked) {
   } else if (ask) {
     state = 'needs-you';
     act = { label: ask.label, since: ask.at, tool: ask.name };
-  } else if (permissionOf(blocked, c) || agentPerm) {
+  } else if (status === 'waiting' || permissionOf(blocked, c) || agentPerm) {
     state = 'needs-you';
     const p = permissionOf(blocked, c);
-    act = p ? { label: p.text, since: p.since, tool: p.tool } : { label: agentPerm.trouble.text + ' (agent: ' + agentPerm.desc + ')', since: agentPerm.trouble.since, tool: agentPerm.trouble.tool };
+    if (p) act = { label: p.text, since: p.since, tool: p.tool };
+    else if (agentPerm) act = { label: agentPerm.trouble.text + ' (agent: ' + agentPerm.desc + ')', since: agentPerm.trouble.since, tool: agentPerm.trouble.tool };
+    else act = { label: WAIT_TEXT[reg.waitingFor] || 'Waiting for you', since: reg.statusUpdatedAt || now };
   } else if (c.fatal && c.fatal.at >= c.promptAt) {
     state = 'error';
     reason = c.fatal.text;
@@ -1557,7 +1594,7 @@ function sessionView(S, now, agents, workflows, shells, blocked) {
     state = 'retrying';
     trouble = troubleOf(c, now, blocked, true);
     act = { label: trouble.text, since: c.apiErr.at };
-  } else if (status === 'idle') {
+  } else if (status === 'idle' || status === 'shell') {
     state = 'your-turn';
     if (c.interruptedAt && c.interruptedAt >= c.promptAt) reason = 'You interrupted it';
   } else {
@@ -1590,13 +1627,13 @@ function sessionView(S, now, agents, workflows, shells, blocked) {
     state,
     reason,
     trouble,
-    since: state === 'your-turn' || state === 'ended' || state === 'died' ? (state === 'your-turn' ? reg.statusUpdatedAt || lastWrite : S.deadAt || lastWrite) : act ? act.since : null,
+    since: state === 'your-turn' || state === 'ended' || state === 'died' ? (state === 'your-turn' ? S.idleAt || lastWrite : S.deadAt || lastWrite) : act ? act.since : null,
     turnStartedAt: c.promptAt || null,
     act,
     steps: c.steps,
     prompt: c.lastPromptEntry || (c.prompt ? oneLine(c.prompt, 400) : null) || (S.headless && S.headless.prompt) || null,
     headless: S.headless ? { kept: S.headless.kept } : null,
-    waiting: S.alive && reg.status === 'waiting' ? { for: reg.waitingFor || null, since: reg.statusUpdatedAt || null } : null,
+    waiting: S.alive && reg.status === 'waiting' ? { for: reg.waitingFor || null, since: reg.statusUpdatedAt || null, text: WAIT_TEXT[reg.waitingFor] || null } : null,
     said: c.said,
     lastWrite,
     recent: c.recent.slice(-6).reverse(),
@@ -1662,11 +1699,13 @@ function pollSession(S, now) {
   const workflows = S.dir ? pollWorkflows(S, now) : [];
   if (S.alive) scanProcs(S);
   else S.procs.clear();
-  const { used, blocked } = S.alive ? matchForeground(S, now) : { used: new Set(), blocked: [] };
+  const fg = S.alive ? matchForeground(S, now) : { used: new Set(), running: new Set(), blocked: [] };
   if (S.alive) {
-    noteRunningTasks(S, now, used);
+    noteRunningTasks(S, now, fg.used);
     backfillTasks(S, now);
   }
+  // the timing guess can flag a call that is not waiting for you
+  const blocked = S.reg.status ? waitedOn(S, fg.running) : fg.blocked;
   const shells = shellViews(S, now);
   const agents = S.dir ? agentViews(S, now, shells.owners, blocked) : [];
   return sessionView(S, now, agents, workflows, shells.list, blocked);
@@ -1719,6 +1758,8 @@ function poll() {
         sessions.set(id, S);
       }
       if (S.alive && !r.alive) S.deadAt = now;
+      // the status held for a session belongs to the process that wrote it
+      if (S.reg.pid !== r.reg.pid) { S.held = null; S.idleAt = 0; }
       S.reg = r.reg;
       S.alive = r.alive;
       S.mt = r.mt;
