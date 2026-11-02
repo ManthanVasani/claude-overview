@@ -17,7 +17,8 @@ another window? claude-overview puts every session on one live board in your bro
 npx claude-overview
 ```
 
-Then open http://127.0.0.1:3100/. It runs until you press Ctrl + C.
+Then open http://127.0.0.1:3100/. It runs until you press Ctrl + C or close that terminal. To use it again later, such
+as after a restart, run the same command and open the same address.
 
 ## What you get
 
@@ -53,7 +54,8 @@ Then open http://127.0.0.1:3100/. It runs until you press Ctrl + C.
 - Or clone this repository and run `./overview start` in its folder to start it in the background.
   `./overview status` and `./overview stop` check on it and stop it.
 - To use another port, set `CLAUDE_OVERVIEW_PORT` before starting it.
-- It does not start again by itself after a restart.
+- It does not start again by itself after a restart: start it again the same way. `./overview start` is safe to run
+  when it is already running; it says so.
 
 ## Using it
 
