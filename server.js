@@ -1014,7 +1014,6 @@ function matchForeground(S, now) {
   fg.sort((x, y) => x.p.at - y.p.at);
   const used = new Set();
   const blocked = [];
-  const paired = [];
   for (const { c, p } of fg) {
     let best = null;
     for (const proc of S.procs.values()) {
@@ -1025,7 +1024,6 @@ function matchForeground(S, now) {
     if (best) {
       used.add(best.pid);
       best.fgOwner = c.owner;
-      paired.push(best);
     } else if (now - p.at > PERMISSION_MS && first.get(c) === p) blocked.push({ c, p, since: p.at + PERMISSION_MS });
   }
   for (const c of liveConvs(S)) {
@@ -1035,12 +1033,16 @@ function matchForeground(S, now) {
   }
   const running = new Set();
   let guessed = false;
-  for (const proc of paired) {
+  for (const proc of S.procs.values()) {
     // a hook, such as one for permission requests, can run while its call waits
-    if (!(proc.task || TOOL_SHELL_RE.test(proc.cmd || ''))) continue;
-    const hits = fg.filter((x) => runsCommand(proc.cmd, x.p.cmd));
+    if (!(proc.task || TOOL_SHELL_RE.test(proc.cmd || '')) || (proc.task && S.tasks.has(proc.task))) continue;
+    const near = fg.filter((x) => proc.start >= x.p.at - 3000);
+    if (!near.length) continue;
+    const hits = near.filter((x) => runsCommand(proc.cmd, x.p.cmd));
     if (hits.length === 1 && !running.has(hits[0].p)) {
       running.add(hits[0].p);
+      // a stray child can take this shell's pairing, and an unpaired shell is read as a background one
+      used.add(proc.pid);
       proc.fgOwner = hits[0].c.owner;
     } else guessed = true;
   }

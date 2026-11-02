@@ -113,7 +113,7 @@
   function onSnap(snap) {
     if (!snap) return;
     latest = snap;
-    // neither the board's timing guess for an older Claude Code nor a screen you opened, such as /model, counts
+    // only a wait Claude Code reports counts, never the board's timing guess alone
     const asking = (snap.sessions || []).filter((s) => s.alive && s.state === 'needs-you' && s.waiting && !s.headless);
     setTitle(asking.length);
     if (btn.classList.contains('on') !== live()) paint();
