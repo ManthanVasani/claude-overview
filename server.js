@@ -86,7 +86,6 @@ const WAIT_TEXT = {
 };
 const AGENT_TOOLS = new Set(['Agent', 'Task']);
 const TOOL_SHELL_RE = /\/shell-snapshots\//;
-const SHELL_HEAD_RE = /eval '([^'\n]*)/;
 // older versions are not known to write the waiting status
 const WAITING_FROM = [2, 1, 286];
 const INSTANT_TOOLS = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit']);
@@ -1014,35 +1013,19 @@ function matchForeground(S, now) {
   }
   fg.sort((x, y) => x.p.at - y.p.at);
   const used = new Set();
-  const running = new Set();
   const blocked = [];
-  const free = (proc, p) => !used.has(proc.pid) && !(proc.task && S.tasks.has(proc.task)) && proc.start >= p.at - 3000;
-  const own = new Map();
-  for (const { p } of fg) {
-    if (typeof p.cmd !== 'string') continue;
-    // Claude Code's tool shell runs the command as eval '...', with each quote in it written as '"'"'
-    const quoted = "eval '" + p.cmd.replace(/'/g, `'"'"'`) + "'";
-    for (const proc of S.procs.values()) {
-      if (free(proc, p) && proc.cmd && proc.cmd.indexOf(quoted) !== -1) { own.set(p, proc); used.add(proc.pid); break; }
-    }
-  }
+  const paired = [];
   for (const { c, p } of fg) {
-    let best = own.get(p) || null;
-    if (!best) {
-      const head = String(p.cmd || '').split(/['\n]/)[0].trim();
-      for (const proc of S.procs.values()) {
-        if (!free(proc, p)) continue;
-        const m = proc.cmd && SHELL_HEAD_RE.exec(proc.cmd);
-        // a shell that starts beside a waiting call can be running another call; ps can change a newline in its text
-        if (m && PROC_FS && m[1].trim() !== head) continue;
-        if (!best || proc.start < best.start) best = proc;
-      }
+    let best = null;
+    for (const proc of S.procs.values()) {
+      if (used.has(proc.pid) || (proc.task && S.tasks.has(proc.task))) continue;
+      if (proc.start < p.at - 3000) continue;
+      if (!best || proc.start < best.start) best = proc;
     }
     if (best) {
       used.add(best.pid);
-      // a hook, such as one for permission requests, can run while its call waits
-      if (best.task || TOOL_SHELL_RE.test(best.cmd || '')) running.add(p);
       best.fgOwner = c.owner;
+      paired.push(best);
     } else if (now - p.at > PERMISSION_MS && first.get(c) === p) blocked.push({ c, p, since: p.at + PERMISSION_MS });
   }
   for (const c of liveConvs(S)) {
@@ -1050,13 +1033,31 @@ function matchForeground(S, now) {
       if (INSTANT_TOOLS.has(p.name) && first.get(c) === p && now - p.at > PERMISSION_MS) blocked.push({ c, p, since: p.at + PERMISSION_MS });
     }
   }
-  return { used, running, blocked };
+  const running = new Set();
+  let guessed = false;
+  for (const proc of paired) {
+    // a hook, such as one for permission requests, can run while its call waits
+    if (!(proc.task || TOOL_SHELL_RE.test(proc.cmd || ''))) continue;
+    const hits = fg.filter((x) => runsCommand(proc.cmd, x.p.cmd));
+    if (hits.length === 1 && !running.has(hits[0].p)) {
+      running.add(hits[0].p);
+      proc.fgOwner = hits[0].c.owner;
+    } else guessed = true;
+  }
+  return { used, running, guessed, blocked };
+}
+
+// Claude Code's tool shell evals a command quoted, each ' in it written as '"'"', or bare when it is one plain word
+function runsCommand(line, cmd) {
+  if (!line || typeof cmd !== 'string') return false;
+  if (line.indexOf("eval '" + cmd.replace(/'/g, `'"'"'`) + "'") !== -1) return true;
+  return /^[\w./:=@+,-]+$/.test(cmd) && line.indexOf('eval ' + cmd + ' ') !== -1;
 }
 
 // Claude Code does not say which call its prompt is for
-function waitedOn(S, running, now, shellOwners) {
+function waitedOn(S, fg, now, shellOwners) {
   const reg = S.reg;
-  if (reg.status !== 'waiting' || reg.waitingFor !== 'permission prompt') return [];
+  if (reg.status !== 'waiting' || reg.waitingFor !== 'permission prompt' || fg.guessed) return [];
   for (const a of S.agents.values()) if (a.tail && a.conv) a.conv.ended = agentStatus(S, a, now, shellOwners, []).state !== 'running';
   const since = Math.max((reg.startedAt || 0) - 2000, (reg.statusUpdatedAt || 0) - PROMPT_LEAD_MS);
   let one = null;
@@ -1064,7 +1065,7 @@ function waitedOn(S, running, now, shellOwners) {
     // an agent stopped in the middle of a call keeps that call open
     if (c.ended) continue;
     for (const p of c.pending.values()) {
-      if (p.at < since || AGENT_TOOLS.has(p.name) || running.has(p)) continue;
+      if (p.at < since || AGENT_TOOLS.has(p.name) || fg.running.has(p)) continue;
       if (one) return [];
       one = { c, p, since: reg.statusUpdatedAt || p.at };
     }
@@ -1738,14 +1739,14 @@ function pollSession(S, now) {
   const workflows = S.dir ? pollWorkflows(S, now) : [];
   if (S.alive) scanProcs(S);
   else S.procs.clear();
-  const fg = S.alive ? matchForeground(S, now) : { used: new Set(), running: new Set(), blocked: [] };
+  const fg = S.alive ? matchForeground(S, now) : { used: new Set(), running: new Set(), guessed: false, blocked: [] };
   if (S.alive) {
     noteRunningTasks(S, now, fg.used);
     backfillTasks(S, now);
   }
   const shells = shellViews(S, now);
   // the timing guess can flag a call that is not waiting for you
-  const blocked = writesWaiting(S.reg) ? waitedOn(S, fg.running, now, shells.owners) : fg.blocked;
+  const blocked = writesWaiting(S.reg) ? waitedOn(S, fg, now, shells.owners) : fg.blocked;
   const agents = S.dir ? agentViews(S, now, shells.owners, blocked) : [];
   return sessionView(S, now, agents, workflows, shells.list, blocked);
 }
