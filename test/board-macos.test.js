@@ -3,13 +3,13 @@
 const assert = require('node:assert/strict');
 const cp = require('child_process');
 const test = require('node:test');
-const { Board, runningToolShell } = require('./helpers/board');
+const { Board, runningToolShell, SERVER_TEST_MS } = require('./helpers/board');
 const { prompt, call, said, result, PERMISSION, quote } = require('./helpers/claude-code');
 
 // the board's ps path calls lsof, and on Linux its ps is a stand-in that reads procps ps and /proc
 const runnable = process.platform === 'darwin' || (process.platform === 'linux' && !cp.spawnSync('lsof', ['-v']).error && cp.spawnSync('/usr/bin/ps', ['-o', 'lstart=', '-p', String(process.pid)]).status === 0);
 
-test('the board on the macOS process path, where ps prints each command through strvis', { skip: !runnable && process.env.CI !== 'true' && 'needs lsof, and on Linux procps ps' }, async (t) => {
+test('the board on the macOS process path, where ps prints each command through strvis', { timeout: SERVER_TEST_MS, skip: !runnable && process.env.CI !== 'true' && 'needs lsof, and on Linux procps ps' }, async (t) => {
   assert.ok(runnable, 'needs lsof, and on Linux procps ps');
   const t0 = Date.now();
   const b = new Board('board-macos-', { startedAt: t0 - 8000, statusUpdatedAt: t0 });

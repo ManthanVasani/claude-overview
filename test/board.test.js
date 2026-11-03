@@ -3,13 +3,13 @@
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const test = require('node:test');
-const { Board, runningToolShell, sleep } = require('./helpers/board');
+const { Board, runningToolShell, sleep, SERVER_TEST_MS } = require('./helpers/board');
 const { prompt, call, said, result, notification, PERMISSION, SCREEN, quote, SCRUB } = require('./helpers/claude-code');
 
 // a line the board reads as a tool shell, kept running by its sleep
 const body = (word) => 'sleep 600; : /x/shell-snapshots/s.sh eval ' + word + ' && pwd -P >| /dev/null';
 
-test('the board reads each session from Claude Code status, on the /proc path', { skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
+test('the board reads each session from Claude Code status, on the /proc path', { timeout: SERVER_TEST_MS, skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
   const T0 = Date.now() - 60000;
   const b = new Board('board-', { startedAt: T0 - 5000 });
   t.after(() => b.stop());

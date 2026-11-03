@@ -10,6 +10,8 @@ const { toolScript } = require('./claude-code');
 
 const ROOT = path.join(__dirname, '..', '..');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// a test that starts a server gives up after this, so a hang fails that test instead of the whole run
+const SERVER_TEST_MS = 180000;
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -109,6 +111,7 @@ class Board {
   // another test file's server can take the port before this one listens, so only this server's own line counts
   async start(opts) {
     opts = opts || {};
+    let failed = '';
     for (let tries = 1; ; tries++) {
       this.port = await freePort();
       const env = Object.assign({}, process.env, {
@@ -128,23 +131,41 @@ class Board {
       this.errors = '';
       this.server = cp.spawn(process.execPath, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
       this.server.stderr.on('data', (b) => { this.errors += b; });
-      if (await this.listening()) return this.state();
-      this.server.kill();
-      if (tries === 3) throw new Error('the server did not start: ' + this.errors);
+      if (await this.listening()) return this.state().catch((e) => { throw new Error(e.message + '; the server said:\n' + this.errors); });
+      await this.stopServer();
+      failed += this.errors;
+      if (tries === 3) throw new Error('the server did not start:\n' + failed);
     }
   }
 
   listening() {
     const line = 'Claude overview on http://127.0.0.1:' + this.port + '/';
+    const s = this.server;
     return new Promise((resolve) => {
       let out = '';
-      const timer = setTimeout(() => resolve(false), 20000);
-      this.server.stdout.on('data', (b) => {
+      const done = (up) => {
+        clearTimeout(timer);
+        s.stdout.removeListener('data', onData);
+        s.removeListener('exit', onExit);
+        s.stdout.resume();
+        resolve(up);
+      };
+      const onData = (b) => {
         out += b;
-        if (out.includes(line)) { clearTimeout(timer); resolve(true); }
-      });
-      this.server.once('exit', () => { clearTimeout(timer); resolve(false); });
+        if (out.includes(line)) done(true);
+      };
+      const onExit = () => done(false);
+      const timer = setTimeout(() => done(false), 20000);
+      s.stdout.on('data', onData);
+      s.once('exit', onExit);
     });
+  }
+
+  async stopServer() {
+    if (!this.server || this.server.exitCode !== null || this.server.signalCode !== null) return;
+    const gone = new Promise((r) => this.server.once('exit', r));
+    this.server.kill();
+    await gone;
   }
 
   get(pathname) {
@@ -210,11 +231,7 @@ class Board {
 
   // the server goes first, so nothing it writes lands in the folder after it is removed
   async stop() {
-    if (this.server && this.server.exitCode === null && this.server.signalCode === null) {
-      const gone = new Promise((r) => this.server.once('exit', r));
-      this.server.kill();
-      await gone;
-    }
+    await this.stopServer();
     for (const pid of this.groups) {
       try { process.kill(-pid); } catch { /* gone */ }
     }
@@ -227,4 +244,4 @@ function runningToolShell(fns, afterEval, prelude) {
   return fns.map((f) => f + '() { sleep 600; }; ').join('') + toolScript(afterEval, { prelude, cwdFile: '/dev/null' });
 }
 
-module.exports = { Board, runningToolShell, sleep };
+module.exports = { Board, runningToolShell, sleep, SERVER_TEST_MS };

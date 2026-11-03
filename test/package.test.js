@@ -6,12 +6,12 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const test = require('node:test');
-const { Board } = require('./helpers/board');
+const { Board, SERVER_TEST_MS } = require('./helpers/board');
 const { version } = require('../package.json');
 
 const ROOT = path.join(__dirname, '..');
 
-test('the published package runs on its own files', async (t) => {
+test('the published package runs on its own files', { timeout: SERVER_TEST_MS }, async (t) => {
   // hooks run in the order they are added, and the server must stop before its files go
   const b = new Board('packed-');
   t.after(() => b.stop());
