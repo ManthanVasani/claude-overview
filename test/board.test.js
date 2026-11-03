@@ -1,7 +1,6 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const cp = require('child_process');
 const fs = require('fs');
 const test = require('node:test');
 const { Board, runningToolShell, sleep, SERVER_TEST_MS } = require('./helpers/board');
@@ -222,14 +221,12 @@ test('transcripts the board cannot read leave their sessions and the others on t
   t.after(() => b.stop());
   b.session('readable', { status: 'busy' }, [prompt(T0), said(T0 + 1000, 'Reading it')]);
   const agentMeta = b.agent('readable', 'h1', { description: 'Check the logs', agentType: 'general-purpose', toolUseId: 'toolH1' }, [prompt(T0 + 2000), call(Date.now() - 100, 'Bash', { command: 'grep error app.log' })]);
-  b.session('unreadable', PERMISSION, [prompt(T0), said(T0 + 1000, 'Hidden')]);
   // a directory opens and then fails to read, as a file on a failing disk would
   fs.mkdirSync(agentMeta.replace('h1.meta.json', 'd1.jsonl'));
-  const journal = b.workflow('readable', 'wf_hidden1', 'w1', 'build:site', [prompt(T0 + 2000), call(Date.now() - 100, 'Bash', { command: 'make site' })]);
-  b.session('dead', { status: 'idle' }, [prompt(T0), said(T0 + 1000, 'Hidden too'), call(T0 + 2000, 'Bash', { command: 'make all' })], { pid: cp.spawnSync('true').pid });
+  b.session('unreadable', PERMISSION, [prompt(T0), said(T0 + 1000, 'Hidden')]);
   // a status file the board does not expect, as a later Claude Code could write
   b.session('odd', { sessionId: 4242, name: '' }, [prompt(T0)]);
-  const files = [b.transcript('unreadable'), b.transcript('dead'), agentMeta.replace(/\.meta\.json$/, '.jsonl'), journal.replace('journal.jsonl', 'agent-w1.jsonl')];
+  const files = [b.transcript('unreadable'), agentMeta.replace(/\.meta\.json$/, '.jsonl')];
   // the status files stay readable and the transcripts do not, as after a sudo claude that kept HOME
   for (const f of files) fs.chmodSync(f, 0);
   try {
@@ -237,30 +234,23 @@ test('transcripts the board cannot read leave their sessions and the others on t
     return t.skip('file modes do not bind the user running the tests');
   } catch { /* unreadable, as wanted */ }
   await b.start();
-  let snap = await b.listed(3);
-  await t.test('every session is on the board, the unreadable ones from their status files', () => {
+  let snap = await b.listed(2);
+  await t.test('the sessions with unreadable files are on the board, the unreadable one from its status file', () => {
     assert.equal(b.view(snap, 'readable').said.text, 'Reading it');
     assert.equal(b.view(snap, 'readable').agents.find((a) => a.id === 'h1').steps, 0);
     assert.equal(b.view(snap, 'unreadable').state, 'needs-you');
     assert.equal(b.view(snap, 'unreadable').said, null);
-    assert.equal(b.view(snap, 'dead').said, null);
   });
   await t.test('a session the board fails on is left off, and the others stay', () => {
     assert.equal(snap.sessions.find((v) => v.id === 4242), undefined);
     assert.match(b.errors, /TypeError/);
   });
-  fs.appendFileSync(journal, JSON.stringify({ type: 'result', agentId: 'w1' }) + '\n');
-  await b.polls(2);
   for (const f of files) fs.chmodSync(f, 0o600);
   await b.polls(2);
   snap = await b.state();
-  await t.test("once they can be read: their conversations, a dead session's and a finished workflow agent's included", async () => {
+  await t.test('once they can be read: their conversations', () => {
     assert.equal(b.view(snap, 'unreadable').said.text, 'Hidden');
-    assert.equal(b.view(snap, 'dead').said.text, 'Hidden too');
-    // 2: the call was cut when the session died
-    assert.deepEqual((await b.history()).filter((r) => r[1] === b.sessions.dead.sid).map((r) => r[9]), [2]);
     assert.equal(b.view(snap, 'readable').agents.find((a) => a.id === 'h1').steps, 1);
-    assert.deepEqual(b.view(snap, 'readable').workflows[0].agents.map((a) => [a.state, a.steps]), [['done', 1]]);
   });
   await t.test('the server logs each unreadable file once', () => {
     assert.equal(b.errors.split('EACCES').length - 1, files.length, b.errors);

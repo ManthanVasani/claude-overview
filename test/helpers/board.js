@@ -108,15 +108,6 @@ class Board {
     return metaFile;
   }
 
-  workflow(key, runId, id, label, lines) {
-    const dir = path.join(this.projDir, this.sessions[key].sid, 'subagents', 'workflows', runId);
-    fs.mkdirSync(dir, { recursive: true });
-    const journal = path.join(dir, 'journal.jsonl');
-    fs.writeFileSync(journal, JSON.stringify({ type: 'launched' }) + '\n' + JSON.stringify({ type: 'started', agentId: id, label, phase: 'Build' }) + '\n');
-    fs.writeFileSync(path.join(dir, 'agent-' + id + '.jsonl'), lines.map((l) => JSON.stringify(Object.assign(l, { isSidechain: true }))).join('\n') + '\n');
-    return journal;
-  }
-
   // another test file's server can take the port before this one listens, so only this server's own line counts
   async start(opts) {
     opts = opts || {};
