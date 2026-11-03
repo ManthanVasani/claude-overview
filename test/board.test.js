@@ -276,8 +276,9 @@ test('the board keeps sessions whose transcripts it cannot read, and leaves off 
   const T0 = Date.now() - 60000;
   const b = new Board('unreadable-', { startedAt: T0 - 5000 });
   t.after(() => b.stop());
-  b.session('readable', { status: 'busy' }, [prompt(T0), said(T0 + 1000, 'Reading it')]);
-  const agentMeta = b.agent('readable', 'h1', { description: 'Check the logs', agentType: 'general-purpose', toolUseId: 'toolH1' }, [prompt(T0 + 2000), call(Date.now() - 100, 'Bash', { command: 'grep error app.log' })]);
+  // a shell the board has no launch for, so it searches the agents' files for one
+  b.session('readable', { status: 'busy' }, [prompt(T0), said(T0 + 1000, 'Reading it')], b.shells([runningToolShell(['serve'], 'serve < /dev/null'), b.task('bwant1')]));
+  const agentMeta = b.agent('readable', 'h1', { description: 'Check the logs', agentType: 'general-purpose', toolUseId: 'toolH1' }, [prompt(T0 + 2000), call(Date.now() - 100, 'WebFetch', { url: 'https://example.com/' })]);
   // a directory opens and then fails to read, as a file on a failing disk would
   fs.mkdirSync(agentMeta.replace('h1.meta.json', 'd1.jsonl'));
   b.session('unreadable', PERMISSION, [prompt(T0), said(T0 + 1000, 'Hidden')]);
@@ -300,17 +301,19 @@ test('the board keeps sessions whose transcripts it cannot read, and leaves off 
   });
   await t.test('a session the board fails on is left off and its error logged', () => {
     assert.equal(snap.sessions.find((v) => v.id === 4242), undefined);
-    assert.match(b.errors, /TypeError/);
+    assert.match(b.errors, /session 4242: TypeError/);
   });
   for (const f of files) fs.chmodSync(f, 0o600);
   await b.polls(2);
-  snap = await b.state();
+  snap = await b.waitFor('the running shell', (st) => b.view(st, 'readable').shells.length > 0);
   await t.test('once they can be read: their conversations', () => {
     assert.equal(b.view(snap, 'unreadable').said.text, 'Hidden');
     assert.equal(b.view(snap, 'readable').agents.find((a) => a.id === 'h1').steps, 1);
+    assert.deepEqual(b.view(snap, 'readable').shells.map((k) => k.id), ['bwant1']);
   });
   await t.test('the server logs each unreadable file once', () => {
     assert.equal(b.errors.split('EACCES').length - 1, files.length, b.errors);
     assert.equal(b.errors.split('EISDIR').length - 1, 1, b.errors);
+    assert.match(b.errors, /cannot read \S*agent-d1\.jsonl \(EISDIR\)/);
   });
 });
