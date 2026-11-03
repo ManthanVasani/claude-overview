@@ -89,9 +89,10 @@ contrast theme or person using assistive technology has tried it yet.
 
 - There is only a dark theme. In forced-colours mode, which Windows' contrast themes turn on, you cannot tell whether a
   toggle button is on, and the timeline does not follow the theme. This was seen in emulation.
-- The DONE and ENDED labels, and the FAILED, LOST, DIED and STOPPED labels, are below 4.5:1. So are the dimmed rows
-  of finished agents, an account turned off in Usage, the agent counts on the timeline, and the other cards while you
-  hover one.
+- The dimmed rows of finished agents, an account turned off in Usage, the agent counts on the timeline, and the other
+  cards while you hover one are below 4.5:1.
+- In the 0.3.2 release on npm, the DONE, ENDED, STOPPED, FAILED, LOST, DIED and RETRYING labels, and the result of a
+  failed or killed background command while you hover it, are below 4.5:1 too.
 - Colour alone tells apart the kinds of tool on the timeline, the state dot beside each session on the timeline, and
   the model families in the usage chart. In a simulation of deuteranopia, Reads and Agents on the timeline look
   alike.

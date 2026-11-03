@@ -237,8 +237,11 @@ body.panel-open .alerts { right: calc(var(--panel) + 16px); }
 .c-your-turn { --c: var(--turn); }
 .c-needs-you { --c: var(--need); }
 .c-error, .c-retrying, .c-died, .c-failed, .c-lost { --c: var(--bad); }
-/* on the node only: a lane carries its session's state class too */
-.node.c-error, .node.c-retrying, .node.c-died, .node.c-failed, .node.c-lost { --ct: var(--bad-t); }
+/* never on the bare state class: a lane carries its session's state class too */
+.node.c-error, .node.c-retrying, .node.c-died, .node.c-failed, .node.c-lost,
+.p-state.c-error, .p-state.c-retrying, .p-state.c-died, .p-state.c-failed, .p-state.c-lost { --ct: var(--bad-t); }
+.node.c-done, .node.c-stopped, .node.c-ended, .node.c-completed,
+.p-state.c-done, .p-state.c-stopped, .p-state.c-ended, .p-state.c-completed { --ct: var(--text-3); }
 .c-waiting { --c: var(--wait); }
 .c-stalled { --c: var(--warn); }
 .c-wf { --c: var(--wf); }
@@ -310,7 +313,7 @@ body.panel-open .alerts { right: calc(var(--panel) + 16px); }
   text-transform: uppercase;
   padding: 2px 7px;
   border-radius: 999px;
-  color: var(--c);
+  color: var(--ct, var(--c));
   background: rgba(148, 163, 184, .1);
   background: color-mix(in srgb, var(--c) 15%, transparent);
   border: 1px solid color-mix(in srgb, var(--c) 38%, transparent);
@@ -355,7 +358,7 @@ body.panel-open .alerts { right: calc(var(--panel) + 16px); }
 .shell .tm { flex: none; color: var(--text-3); }
 .shell .si { color: var(--c); }
 .c-failed > .shell, .c-died > .shell { border-color: rgba(244, 63, 94, .45); color: var(--bad-t); }
-.c-failed > .shell .tm, .c-died > .shell .tm { color: var(--bad); }
+.c-failed > .shell .tm, .c-died > .shell .tm { color: var(--bad-t); }
 .c-done > .shell, .c-stopped > .shell, .c-ended > .shell { background: rgba(12, 20, 36, .92); border-color: rgba(148, 163, 184, .09); color: var(--text-3); }
 .c-done > .shell:hover, .c-stopped > .shell:hover, .c-ended > .shell:hover { border-color: var(--border-hi); background: var(--card-hi); }
 .c-running > .shell { border-color: rgba(52, 211, 153, .22); }
