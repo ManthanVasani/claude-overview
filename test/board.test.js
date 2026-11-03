@@ -271,3 +271,52 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   });
   await check('the server writes nothing to stderr', () => assert.equal(b.errors.trim(), ''));
 });
+
+test('the board keeps sessions whose transcripts it cannot read, and leaves off only a session it fails on', { timeout: SERVER_TEST_MS, skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
+  const T0 = Date.now() - 60000;
+  const b = new Board('unreadable-', { startedAt: T0 - 5000 });
+  t.after(() => b.stop());
+  // a shell the board has no launch for, so it searches the agents' files for one
+  b.session('readable', { status: 'busy' }, [prompt(T0), said(T0 + 1000, 'Reading it')], b.shells([runningToolShell(['serve'], 'serve < /dev/null'), b.task('bwant1')]));
+  const agentMeta = b.agent('readable', 'h1', { description: 'Check the logs', agentType: 'general-purpose', toolUseId: 'toolH1' }, [prompt(T0 + 2000), call(Date.now() - 100, 'WebFetch', { url: 'https://example.com/' })]);
+  // a directory opens and then fails to read, as a file on a failing disk would
+  const dir = agentMeta.replace('h1.meta.json', 'd1.jsonl');
+  fs.mkdirSync(dir);
+  // btrfs gives an empty directory size 0, and the board reads nothing from a file of size 0
+  fs.writeFileSync(path.join(dir, 'x'), '');
+  b.session('unreadable', PERMISSION, [prompt(T0), said(T0 + 1000, 'Hidden')]);
+  // a status file the board fails on, as a later Claude Code could write
+  b.session('odd', { sessionId: 4242, name: '' }, [prompt(T0)]);
+  const files = [b.transcript('unreadable'), agentMeta.replace(/\.meta\.json$/, '.jsonl')];
+  // the status files stay readable and the transcripts do not, as after a sudo claude that kept HOME
+  for (const f of files) fs.chmodSync(f, 0);
+  try {
+    fs.closeSync(fs.openSync(files[0], 'r'));
+    return t.skip('file modes do not bind the user running the tests');
+  } catch { /* unreadable, as wanted */ }
+  await b.start();
+  let snap = await b.listed(2);
+  await t.test('the sessions with unreadable files are on the board, the unreadable one from its status file', () => {
+    assert.equal(b.view(snap, 'readable').said.text, 'Reading it');
+    assert.equal(b.view(snap, 'readable').agents.find((a) => a.id === 'h1').steps, 0);
+    assert.equal(b.view(snap, 'unreadable').state, 'needs-you');
+    assert.equal(b.view(snap, 'unreadable').said, null);
+  });
+  await t.test('a session the board fails on is left off and its error logged', () => {
+    assert.equal(snap.sessions.find((v) => v.id === 4242), undefined);
+    assert.match(b.errors, /session 4242: TypeError/);
+  });
+  for (const f of files) fs.chmodSync(f, 0o600);
+  await b.polls(2);
+  snap = await b.waitFor('the running shell', (st) => b.view(st, 'readable').shells.length > 0);
+  await t.test('once they can be read: their conversations', () => {
+    assert.equal(b.view(snap, 'unreadable').said.text, 'Hidden');
+    assert.equal(b.view(snap, 'readable').agents.find((a) => a.id === 'h1').steps, 1);
+    assert.deepEqual(b.view(snap, 'readable').shells.map((k) => k.id), ['bwant1']);
+  });
+  await t.test('the server logs each unreadable file once', () => {
+    assert.equal(b.errors.split('EACCES').length - 1, files.length, b.errors);
+    assert.equal(b.errors.split('EISDIR').length - 1, 1, b.errors);
+    assert.match(b.errors, /cannot read \S*agent-d1\.jsonl \(EISDIR\)/);
+  });
+});
