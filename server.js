@@ -1037,7 +1037,8 @@ function matchForeground(S, now) {
     if (!(proc.task || TOOL_SHELL_RE.test(proc.cmd || '')) || (proc.task && S.tasks.has(proc.task))) continue;
     const near = fg.filter((x) => proc.start >= x.p.at - 3000);
     if (!near.length) continue;
-    const hits = near.filter((x) => runsCommand(proc.cmd, x.p.cmd));
+    const ev = evalCommand(proc.cmd);
+    const hits = near.filter((x) => ev && ev.whole && ev.cmd === x.p.cmd);
     if (hits.length === 1 && !running.has(hits[0].p)) {
       running.add(hits[0].p);
       // a stray child can take this shell's pairing, and an unpaired shell is read as a background one
@@ -1048,11 +1049,31 @@ function matchForeground(S, now) {
   return { used, running, guessed, blocked };
 }
 
-// mirrors how Claude Code's tool shell quotes the command it evals
-function runsCommand(line, cmd) {
-  if (!line || typeof cmd !== 'string') return false;
-  if (line.indexOf("eval '" + cmd.replace(/'/g, `'"'"'`) + "'") !== -1) return true;
-  return /^[\w./:=@+,-]+$/.test(cmd) && line.indexOf('eval ' + cmd + ' ') !== -1;
+// Claude Code's tool shell evals the command as a single shell word, quoted or bare
+function evalCommand(line) {
+  const at = line ? line.indexOf(' eval ') : -1;
+  if (at < 0) return null;
+  let cmd = '';
+  let i = at + 6;
+  while (i < line.length && line[i] !== ' ') {
+    const q = line[i];
+    if (q === '\\') {
+      cmd += line.slice(i + 1, i + 2);
+      i += 2;
+      continue;
+    }
+    if (q !== "'" && q !== '"') {
+      cmd += q;
+      i++;
+      continue;
+    }
+    const end = line.indexOf(q, i + 1);
+    // a command ps prints over several lines keeps only its first
+    if (end < 0) return { cmd: cmd + line.slice(i + 1), whole: false };
+    cmd += line.slice(i + 1, end);
+    i = end + 1;
+  }
+  return cmd ? { cmd, whole: true } : null;
 }
 
 // Claude Code does not say which call its prompt is for
@@ -1116,8 +1137,8 @@ function headlessOf(pid) {
 function fallbackDesc(pid) {
   const cmd = cmdOf(pid);
   if (cmd == null) return null;
-  const m = /eval '(.*?)(?:' <|'$)/.exec(cmd);
-  return '$ ' + oneLine((m ? m[1] : cmd).replace(/'\\''/g, "'"), 120);
+  const ev = evalCommand(cmd);
+  return '$ ' + oneLine(!ev ? cmd : ev.whole ? ev.cmd : ev.cmd + ' …', 120);
 }
 
 function escapeRe(s) {
