@@ -177,7 +177,8 @@ are running." or a session is missing:
 
 ## What it reads
 
-- `~/.claude/sessions` (or `$CLAUDE_CONFIG_DIR/sessions`), to see which sessions are running.
+- `~/.claude/sessions` (or `$CLAUDE_CONFIG_DIR/sessions`), to see which sessions are running and whether each is
+  working, waiting for you or idle.
 - The session, agent and workflow transcripts under `~/.claude/projects`.
 - The process list, to find background shells: `/proc` on Linux, `ps` and `lsof` on macOS.
 - cswap's account list and usage cache, when cswap is installed. Never its credentials.

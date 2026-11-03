@@ -66,16 +66,9 @@
     // an agent's end time can move
     return a.node.startsWith('s:') ? a.node + '|' + a.since : a.node;
   }
-  const WAIT_TEXT = {
-    'permission prompt': 'Waiting for your permission',
-    'sandbox request': 'Waiting for your permission',
-    'worker request': 'Waiting for your permission',
-    'input needed': 'Waiting for your answer',
-    'goal proposal': 'Waiting for your answer',
-  };
   // the board's needs row can be a guess about another call, so its text is not quoted
   function needOf(s) {
-    return { level: 'needs', node: 's:' + s.id, title: s.name, text: WAIT_TEXT[s.waiting.for] || 'Waiting for you' };
+    return { level: 'needs', node: 's:' + s.id, title: s.name, text: s.waiting.text || 'Waiting for you' };
   }
   function headOf(a) { return a.title + (a.session && a.session !== a.title ? ' · ' + a.session : ''); }
 
@@ -97,7 +90,7 @@
       ids.add(s.id);
       const prev = states.get(s.id);
       // a wait can come during a turn or after it, so it says nothing about whether one is running
-      if (s.state !== 'needs-you' && !s.waiting) states.set(s.id, s.state);
+      if (s.state !== 'needs-you') states.set(s.id, s.state);
       if (s.state !== 'your-turn') { unsettle(s.id); continue; }
       if (prev !== 'working' && prev !== 'retrying') continue;
       settling.set(s.id, setTimeout(() => {
@@ -120,8 +113,8 @@
   function onSnap(snap) {
     if (!snap) return;
     latest = snap;
-    // Claude Code reports a screen you opened, such as /model, as a dialog too
-    const asking = (snap.sessions || []).filter((s) => s.alive && s.waiting && s.waiting.for !== 'dialog open' && !s.headless);
+    // only a wait Claude Code reports counts, never the board's timing guess alone
+    const asking = (snap.sessions || []).filter((s) => s.alive && s.state === 'needs-you' && s.waiting && !s.headless);
     setTitle(asking.length);
     if (btn.classList.contains('on') !== live()) paint();
     const baseline = !seen;
@@ -143,7 +136,7 @@
       seen.set(k, 0);
     }
     for (const a of attention) {
-      // the board's needs rows can be a guess from timing, and an agent's quiet row has the key its failure will have
+      // needs alerts come from the waiting status above, and an agent's quiet row has the key its failure will have
       if (a.quiet || a.level === 'needs') continue;
       const k = keyOf(a);
       if (!baseline && !seen.has(k) && prefs.problems && !restarted) fresh.push(Object.assign({ key: k }, a));
