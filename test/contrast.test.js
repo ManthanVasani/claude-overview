@@ -77,9 +77,9 @@ function cardsOf(st) {
   const bg = decl('.c-' + st + ' > .card', 'background');
   if (!bg) return [card];
   if (!bg.includes('gradient')) return [rgb(resolve(bg, {}))];
-  assert.match(bg, /^linear-gradient\((?:[^()]|rgba\([^()]*\))*\), var\(--card\)$/, 'not a card background this check can read: ' + bg);
-  const stops = [...bg.matchAll(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/g)];
-  assert.ok(stops.length, 'no stops in ' + bg);
+  const g = /^linear-gradient\((?:\d+deg, )?((?:rgba\(\d+, \d+, \d+, [\d.]+\)(?:, )?)+)\), var\(--card\)$/.exec(bg);
+  assert.ok(g, 'not a card background this check can read: ' + bg);
+  const stops = [...g[1].matchAll(/rgba\((\d+), (\d+), (\d+), ([\d.]+)\)/g)];
   return stops.map((m) => over(m.slice(1, 4).map(Number), Number(m[4]), card));
 }
 
