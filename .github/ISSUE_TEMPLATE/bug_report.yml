@@ -29,7 +29,7 @@ body:
     id: version
     attributes:
       label: claude-overview version
-      description: "`npx claude-overview@latest --version`, `claude-overview --version` if you installed it with npm, or `git log -1 --format=%h` in your clone."
+      description: "`claude-overview --version` if you installed it with npm, or `git log -1 --format=%h` in your clone. With npx it is the newest version on npm when you started it, which `npx claude-overview@latest --version` prints until a newer one comes out."
     validations:
       required: true
   - type: input

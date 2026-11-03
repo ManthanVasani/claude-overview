@@ -7,11 +7,13 @@ starts the latest one.
 
 ## Reporting a vulnerability
 
-Please report it privately through GitHub, not in a public issue: on the repository's **Security** tab, choose
-**Report a vulnerability** ([direct link](https://github.com/ManthanVasani/claude-overview/security/advisories/new)).
+Please report it privately through GitHub, not in a public issue: on the repository's **Security** tab, open
+**Advisories** and choose **Report a vulnerability**
+([direct link](https://github.com/ManthanVasani/claude-overview/security/advisories/new)).
 
-Say what someone could do with it, how to reproduce it, and which version you ran (`claude-overview --version`, or
-`npx claude-overview@latest --version`).
+Say what someone could do with it, how to reproduce it, and which version you ran: `claude-overview --version` if you
+installed it with npm, `git log -1 --format=%h` in a clone. With npx it is the newest version on npm when you started
+it, which `npx claude-overview@latest --version` prints until a newer one comes out.
 
 ## What the board promises
 

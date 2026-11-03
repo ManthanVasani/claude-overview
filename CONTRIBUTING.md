@@ -42,8 +42,8 @@ Linux procps `ps`), and a C compiler with `strvis` (on Linux it comes from libbs
 ## What a change has to keep
 
 - No npm dependencies. `npx claude-overview@latest` starts the board without installing anything else.
-- It reads Claude Code's files and the process list and never writes to them. Its own token totals are its only
-  writes, in the folder [What it reads](README.md#what-it-reads) names.
+- It reads Claude Code's files and the process list and never writes to them. Its only files are its token totals,
+  in the folder [What it reads](README.md#what-it-reads) names, and `overview.log` when `./overview start` runs it.
 - It listens on 127.0.0.1 only, answers only GET requests and makes no requests of its own.
 - It runs on Linux, macOS and Windows with WSL, on Node.js 20 and later.
 - The code matches the code around it. Comments are rare and say why, not what.

@@ -18,4 +18,5 @@ Checked:
 
 - [ ] No new npm dependency.
 - [ ] Claude Code's files are only read, never written.
+- [ ] It still listens on 127.0.0.1 only, answers only GET requests and makes no requests of its own.
 - [ ] A change in what the board shows comes with a test that fails without it.
