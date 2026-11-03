@@ -196,7 +196,8 @@ write no transcript, so they are not counted.
 
 Bug reports, ideas and pull requests are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). There is no build step:
 `node server.js` in a clone runs your copy, and `npm test` runs the checks every pull request runs. To report a
-security problem, see [SECURITY.md](SECURITY.md).
+security problem, see [SECURITY.md](SECURITY.md). What works with a keyboard, a screen reader or high zoom, and how
+to report a barrier, is in [ACCESSIBILITY.md](ACCESSIBILITY.md).
 
 ## License
 
