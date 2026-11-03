@@ -1038,7 +1038,7 @@ function matchForeground(S, now) {
     const near = fg.filter((x) => proc.start >= x.p.at - 3000);
     if (!near.length) continue;
     const ev = evalCommand(proc.cmd);
-    const hits = near.filter((x) => ev && ev.whole && ev.cmd === x.p.cmd);
+    const hits = ev == null ? [] : near.filter((x) => x.p.cmd === ev);
     if (hits.length === 1 && !running.has(hits[0].p)) {
       running.add(hits[0].p);
       // a stray child can take this shell's pairing, and an unpaired shell is read as a background one
@@ -1049,12 +1049,19 @@ function matchForeground(S, now) {
   return { used, running, guessed, blocked };
 }
 
-// Claude Code's tool shell evals the command as a single shell word, quoted or bare
+// Claude Code's own text before the command can eval too, so take the eval word right before its pwd
 function evalCommand(line) {
-  const at = line ? line.indexOf(' eval ') : -1;
-  if (at < 0) return null;
+  for (let at = line ? line.indexOf(' eval ') : -1; at >= 0; at = line.indexOf(' eval ', at + 1)) {
+    const w = shellWord(line, at + 6);
+    if (!w) continue;
+    const end = line.startsWith(' < /dev/null', w.end) ? w.end + 12 : w.end;
+    if (w.cmd && line.startsWith(' && pwd -P >| ', end)) return w.cmd;
+  }
+  return null;
+}
+
+function shellWord(line, i) {
   let cmd = '';
-  let i = at + 6;
   while (i < line.length && line[i] !== ' ') {
     const q = line[i];
     if (q === '\\') {
@@ -1068,12 +1075,11 @@ function evalCommand(line) {
       continue;
     }
     const end = line.indexOf(q, i + 1);
-    // a command ps prints over several lines keeps only its first
-    if (end < 0) return { cmd: cmd + line.slice(i + 1), whole: false };
+    if (end < 0) return null;
     cmd += line.slice(i + 1, end);
     i = end + 1;
   }
-  return cmd ? { cmd, whole: true } : null;
+  return { cmd, end: i };
 }
 
 // Claude Code does not say which call its prompt is for
@@ -1138,7 +1144,7 @@ function fallbackDesc(pid) {
   const cmd = cmdOf(pid);
   if (cmd == null) return null;
   const ev = evalCommand(cmd);
-  return '$ ' + oneLine(!ev ? cmd : ev.whole ? ev.cmd : ev.cmd + ' …', 120);
+  return '$ ' + oneLine(ev == null ? cmd : ev, 120);
 }
 
 function escapeRe(s) {
