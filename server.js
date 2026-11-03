@@ -533,7 +533,7 @@ function histChunk(file, job, conv, cutoff, now) {
   return n;
 }
 
-// Claude Code's quoting rewrites each quote, so the key is the text before the first one
+// Claude Code's quoting rewrites each quote
 function cmdKey(cmd) {
   if (typeof cmd !== 'string') return null;
   const head = cmd.split(/['\n]/)[0].trim();
@@ -1100,7 +1100,7 @@ function shellWord(line, i) {
   return { cmd, end: i };
 }
 
-// Claude Code's own quoting; macOS ps prints 0xA7 as M-', so its text cannot be parsed back
+// macOS ps prints 0xA7 as M-', so its text cannot be parsed back
 function claudeQuote(cmd) {
   if (typeof cmd !== 'string') return null;
   if (/^[A-Za-z0-9_./:=@+,-]+$/.test(cmd)) return cmd;
