@@ -65,7 +65,7 @@ const STALL_MS = 8 * MIN;
 const LOST_MS = 2 * HOUR;
 const RETRY_FRESH_MS = 10 * MIN;
 const PERMISSION_MS = 15000;
-// a prompt comes right after its call and that call's hooks
+// a prompt usually comes right after its call and that call's hooks
 const PROMPT_LEAD_MS = 5000;
 const FG_LIMIT_MS = 11 * MIN;
 const DEATH_GRACE_MS = 20000;
