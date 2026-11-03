@@ -71,9 +71,6 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   const big = 'x'.repeat(256 << 10);
   const writes = Array.from({ length: 24 }, (_, i) => '/x/f' + i + '.txt');
   b.session('long-history', { status: 'idle', statusUpdatedAt: Date.now() - 300000 }, [prompt(T0), ...writes.map((f, i) => call(T0 + 1000 + i, 'Write', { file_path: f, content: big })), ...Array.from({ length: 20 }, () => said(T0 + 2000, big))]);
-  // stat works and open fails, as on a transcript a root-owned session wrote
-  b.session('unreadable', { status: 'busy' }, [prompt(T0), said(T0 + 1000)]);
-  fs.chmodSync(b.transcript('unreadable'), 0);
   const spawned = Date.now();
 
   await b.start();
@@ -91,10 +88,6 @@ test('the board reads each session from Claude Code status, on the /proc path', 
     if (act instanceof RegExp) assert.match(s.act || '', act);
     else assert.equal(s.act, act);
   };
-  await check('a session whose transcript cannot be opened: still listed', () => {
-    assert.throws(() => fs.openSync(b.transcript('unreadable'), 'r'), 'file modes must apply to the user running the tests');
-    assert.ok(view('unreadable'));
-  });
   const ALONE = 'Waiting for your permission';
 
   await check('waiting for permission, one open call: needs you, names the call', () => {
@@ -220,4 +213,24 @@ test('the board reads each session from Claude Code status, on the /proc path', 
     for (const x of list) if (x.startsWith('stopped')) assert.match(x, /Stop late|make late-stop/);
   });
   await check('the server writes nothing to stderr', () => assert.equal(b.errors.trim(), ''));
+});
+
+test('a session whose transcript cannot be read leaves the other sessions on the board', { timeout: SERVER_TEST_MS, skip: (process.platform !== 'linux' && 'the /proc path is Linux only') || (process.getuid() === 0 && 'file modes do not bind root') }, async (t) => {
+  const T0 = Date.now() - 60000;
+  const b = new Board('unreadable-', { startedAt: T0 - 5000 });
+  t.after(() => b.stop());
+  b.session('readable', { status: 'busy' }, [prompt(T0), said(T0 + 1000, 'Reading it')]);
+  b.session('unreadable', { status: 'busy' }, [prompt(T0), said(T0 + 1000, 'Hidden')]);
+  // the status file stays readable and the transcript does not, as after a sudo claude that kept HOME
+  fs.chmodSync(b.transcript('unreadable'), 0);
+  await b.start();
+  let snap = await b.listed(1);
+  await t.test('the other session is on the board, the unreadable one is not', () => {
+    assert.ok(b.view(snap, 'readable'));
+    assert.equal(b.view(snap, 'unreadable'), undefined);
+  });
+  fs.chmodSync(b.transcript('unreadable'), 0o600);
+  snap = await b.listed(2);
+  await t.test('once it can be read: on the board', () => assert.ok(b.view(snap, 'unreadable')));
+  await t.test('the server logs the error once', () => assert.equal(b.errors.split('EACCES').length - 1, 1, b.errors));
 });
