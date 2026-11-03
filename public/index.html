@@ -315,6 +315,12 @@ body.panel-open .alerts { right: calc(var(--panel) + 16px); }
   background: color-mix(in srgb, var(--c) 15%, transparent);
   border: 1px solid color-mix(in srgb, var(--c) 38%, transparent);
 }
+.c-error > .card .chip, .c-retrying > .card .chip, .c-died > .card .chip, .c-failed > .card .chip,
+.c-lost > .card .chip, .p-state.c-error .chip, .p-state.c-retrying .chip, .p-state.c-died .chip,
+.p-state.c-failed .chip, .p-state.c-lost .chip { color: var(--bad-t); }
+.c-done > .card .chip, .c-stopped > .card .chip, .c-ended > .card .chip, .c-completed > .card .chip,
+.p-state.c-done .chip, .p-state.c-stopped .chip, .p-state.c-ended .chip,
+.p-state.c-completed .chip { color: var(--text-3); }
 .badge { flex: none; font-size: 10px; color: var(--text-3); border: 1px solid var(--border-hi); border-radius: 5px; padding: 0 5px; text-transform: uppercase; letter-spacing: .05em; }
 .act { display: flex; gap: 8px; align-items: baseline; margin-top: 5px; font: 500 12px/1.35 var(--mono); color: var(--ct, var(--c)); min-width: 0; }
 .act .tx { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
