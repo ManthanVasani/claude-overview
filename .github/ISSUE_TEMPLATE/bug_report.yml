@@ -1,0 +1,73 @@
+name: Bug report
+description: Something on the board is wrong, missing or broken.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The board shows your prompts, commands, file paths and session names. Look at a screenshot or a log before you attach it, and blur what you do not want to be public. To report a security problem, use the repository's Security tab instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What the board showed or did, and on which card, panel or drawer.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: What Claude Code was doing at the time, and what the board should have shown.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      description: The steps, if you know them.
+  - type: input
+    id: version
+    attributes:
+      label: claude-overview version
+      description: "`npx claude-overview@latest --version`, `claude-overview --version` if you installed it with npm, or `git log -1 --format=%h` in your clone."
+    validations:
+      required: true
+  - type: input
+    id: claude-code
+    attributes:
+      label: Claude Code version
+      description: "`claude --version`"
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node.js version
+      description: "`node --version`"
+    validations:
+      required: true
+  - type: dropdown
+    id: system
+    attributes:
+      label: System
+      options:
+        - Linux
+        - macOS
+        - Windows with WSL
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where Claude Code runs
+      multiple: true
+      options:
+        - In a terminal
+        - In VS Code
+        - Headless (claude -p)
+  - type: textarea
+    id: log
+    attributes:
+      label: The board's messages
+      description: Anything the board printed in its terminal, or in `overview.log` if you start it with `./overview start`.
+      render: text

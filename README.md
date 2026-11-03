@@ -194,19 +194,9 @@ write no transcript, so they are not counted.
 
 ## Contributing
 
-Bug reports and ideas are welcome in [Issues](https://github.com/ManthanVasani/claude-overview/issues), and so are
-pull requests. There is no build step: `node server.js` in a clone runs your copy, and `npm test` runs the checks
-every pull request runs, on Linux and on macOS.
-
-- `server.js` starts the board.
-- `lib/` is the server, a module per job: reading the session registry and transcripts (`sessions`,
-  `conversation`, `agents`, `workflows`), the process list (`procs`, `shells`, `shell-line`), the tool-call timeline
-  (`steps`, `tools`), token usage (`usage`, `usage-scan`), serving the page and its live updates (`http`, `feed`),
-  and what they share (`config`, `constants`, `files`, `text`, `log`).
-- `public/` is the page and its scripts.
-- `test/` holds the checks. On Linux they include the macOS ones, through a stand-in for macOS `ps`. Two need tools
-  that may be missing and are skipped without them: `lsof` (and on Linux procps `ps`), and a C compiler with
-  `strvis` (on Linux it comes from libbsd: `libbsd-dev` on Debian and Ubuntu).
+Bug reports, ideas and pull requests are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). There is no build step:
+`node server.js` in a clone runs your copy, and `npm test` runs the checks every pull request runs. To report a
+security problem, see [SECURITY.md](SECURITY.md).
 
 ## License
 
