@@ -1049,7 +1049,7 @@ function matchForeground(S, now) {
   return { used, running, guessed, blocked };
 }
 
-// Claude Code's own text before the command can eval too, so take the eval word right before its pwd
+// Claude Code's own text before the command can eval too
 function evalCommand(line) {
   for (let at = line ? line.indexOf(' eval ') : -1; at >= 0; at = line.indexOf(' eval ', at + 1)) {
     const w = shellWord(line, at + 6);
