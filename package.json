@@ -28,6 +28,9 @@
     "lib/",
     "public/"
   ],
+  "scripts": {
+    "test": "node --test --test-timeout=180000 test/*.test.js"
+  },
   "engines": {
     "node": ">=20"
   },
