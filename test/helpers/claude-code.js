@@ -18,10 +18,14 @@ function said(t, text) {
   return { type: 'assistant', timestamp: iso(t), message: { id: 'm' + (++seq), role: 'assistant', model: 'm', stop_reason: 'end_turn', content: [{ type: 'text', text: text || 'done' }] } };
 }
 
-function result(t, id, toolUseResult) {
-  const r = { type: 'user', timestamp: iso(t), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'ok' }] } };
+function result(t, id, toolUseResult, text) {
+  const r = { type: 'user', timestamp: iso(t), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: text || 'ok' }] } };
   if (toolUseResult) r.toolUseResult = toolUseResult;
   return r;
+}
+
+function launched(t, id, task) {
+  return result(t, id, null, 'Command running in background with ID: ' + task + '. Output is being written to: /x/tasks/' + task + '.output');
 }
 
 function notification(t, task) {
@@ -55,4 +59,4 @@ function toolShellLine(afterEval, opts) {
   return toolShellArgv(afterEval, opts).join(' ') + ' ';
 }
 
-module.exports = { prompt, call, said, result, notification, PERMISSION, SCREEN, quote, SCRUB, toolScript, toolShellArgv, toolShellLine };
+module.exports = { prompt, call, said, result, launched, notification, PERMISSION, SCREEN, quote, SCRUB, toolScript, toolShellArgv, toolShellLine };
