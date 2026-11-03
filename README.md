@@ -73,7 +73,8 @@ npm install -g claude-overview
 claude-overview
 ```
 
-Next time, run `claude-overview`. To update it, run `npm install -g claude-overview@latest`.
+Next time, run `claude-overview`. To update it, run `npm install -g claude-overview@latest`, then stop it with
+Ctrl + C and start it again, so the new version runs.
 
 ### Keep it running in the background
 
@@ -194,11 +195,22 @@ write no transcript, so they are not counted.
 ## Contributing
 
 Bug reports and ideas are welcome in [Issues](https://github.com/ManthanVasani/claude-overview/issues), and so are
-pull requests. There is no build step: `node server.js` in a clone runs your copy.
+pull requests. There is no build step: `node server.js` in a clone runs your copy, and `npm test` runs the checks
+every pull request runs, on Linux and on macOS.
+
+- `server.js` starts the board.
+- `lib/` is the server, a module per job: reading the session registry and transcripts (`sessions`,
+  `conversation`, `agents`, `workflows`), the process list (`procs`, `shells`, `shell-line`), the tool-call timeline
+  (`steps`, `tools`), token usage (`usage`, `usage-scan`), serving the page and its live updates (`http`, `feed`),
+  and what they share (`config`, `constants`, `files`, `text`, `log`).
+- `public/` is the page and its scripts.
+- `test/` holds the checks. On Linux they include the macOS ones, through a stand-in for macOS `ps`. Two need tools
+  that may be missing and are skipped without them: `lsof` (and on Linux procps `ps`), and a C compiler with
+  `strvis` (on Linux it comes from libbsd: `libbsd-dev` on Debian and Ubuntu).
 
 ## License
 
-MIT, see [LICENSE](LICENSE). The bundled `vendor/d3.min.js` is [d3](https://d3js.org) under its own ISC license,
-in [vendor/d3-LICENSE](vendor/d3-LICENSE).
+MIT, see [LICENSE](LICENSE). The bundled `public/vendor/d3.min.js` is [d3](https://d3js.org) under its own ISC
+license, in [public/vendor/d3-LICENSE](public/vendor/d3-LICENSE).
 
 claude-overview is an independent project. It is not made, endorsed or supported by Anthropic.

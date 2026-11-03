@@ -1,0 +1,21 @@
+{
+ "claudeCode": "2.1.316",
+ "lines": [
+  {
+   "argv": [
+    "/bin/bash",
+    "-c",
+    "source /home/u/.claude/shell-snapshots/snapshot-bash-1793644051700-203bjk.sh 2>/dev/null || true && shopt -u extglob 2>/dev/null || true && { \\builtin unalias -- 'unsetenv'; \\builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'ping -c 90 127.0.0.1 > /dev/null; grep -c '\"'\"'it'\"'\"'\"'\"'\"'\"'\"'\"'s'\"'\"' < /dev/null; make' && pwd -P >| /tmp/claude-df82-cwd"
+   ],
+   "command": "ping -c 90 127.0.0.1 > /dev/null; grep -c 'it'\"'\"'s' < /dev/null; make"
+  },
+  {
+   "argv": [
+    "/bin/bash",
+    "-c",
+    "source /home/u/.claude/shell-snapshots/snapshot-bash-1793644051700-203bjk.sh 2>/dev/null || true && shopt -u extglob 2>/dev/null || true && { \\builtin unalias -- 'unsetenv'; \\builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'ping -c 90 127.0.0.2 > /dev/null' < /dev/null && pwd -P >| /tmp/claude-b4a3-cwd"
+   ],
+   "command": "ping -c 90 127.0.0.2 > /dev/null"
+  }
+ ]
+}

@@ -25,14 +25,12 @@
   },
   "files": [
     "server.js",
-    "usage-scan.js",
-    "index.html",
-    "map.js",
-    "live.js",
-    "usage-ui.js",
-    "alerts.js",
-    "vendor/"
+    "lib/",
+    "public/"
   ],
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
   "engines": {
     "node": ">=20"
   },

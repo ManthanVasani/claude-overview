@@ -1,0 +1,25 @@
+#!/usr/bin/env node
+'use strict';
+
+// Apple's ps, on Linux, for the one listing the board asks for: it ignores its arguments
+const cp = require('child_process');
+const fs = require('fs');
+const { appleVis } = require('../apple-vis');
+
+const r = cp.spawnSync('/usr/bin/ps', ['-A', '-ww', '-o', 'pid=', '-o', 'ppid=', '-o', 'lstart='], { encoding: 'utf8' });
+const rows = [];
+for (const line of r.stdout.split('\n')) {
+  const m = /^\s*(\d+)\s+(\d+)\s+(.*\S)\s*$/.exec(line);
+  if (!m) continue;
+  let raw;
+  try { raw = fs.readFileSync('/proc/' + m[1] + '/cmdline'); } catch { continue; }
+  let end = raw.length;
+  while (end > 0 && raw[end - 1] === 0) end--;
+  let cmd = Buffer.from(raw.subarray(0, end));
+  for (let i = 0; i < cmd.length; i++) if (cmd[i] === 0) cmd[i] = 32;
+  if (!cmd.length) {
+    try { cmd = Buffer.from('(' + fs.readFileSync('/proc/' + m[1] + '/comm', 'utf8').trim() + ')'); } catch { continue; }
+  }
+  rows.push('  ' + m[1] + '  ' + m[2] + ' ' + m[3] + ' ' + appleVis(cmd));
+}
+process.stdout.write(rows.join('\n') + '\n');
