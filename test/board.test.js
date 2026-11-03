@@ -280,7 +280,10 @@ test('the board keeps sessions whose transcripts it cannot read, and leaves off 
   b.session('readable', { status: 'busy' }, [prompt(T0), said(T0 + 1000, 'Reading it')], b.shells([runningToolShell(['serve'], 'serve < /dev/null'), b.task('bwant1')]));
   const agentMeta = b.agent('readable', 'h1', { description: 'Check the logs', agentType: 'general-purpose', toolUseId: 'toolH1' }, [prompt(T0 + 2000), call(Date.now() - 100, 'WebFetch', { url: 'https://example.com/' })]);
   // a directory opens and then fails to read, as a file on a failing disk would
-  fs.mkdirSync(agentMeta.replace('h1.meta.json', 'd1.jsonl'));
+  const dir = agentMeta.replace('h1.meta.json', 'd1.jsonl');
+  fs.mkdirSync(dir);
+  // btrfs gives an empty directory size 0, and the board reads nothing from a file of size 0
+  fs.writeFileSync(path.join(dir, 'x'), '');
   b.session('unreadable', PERMISSION, [prompt(T0), said(T0 + 1000, 'Hidden')]);
   // a status file the board fails on, as a later Claude Code could write
   b.session('odd', { sessionId: 4242, name: '' }, [prompt(T0)]);

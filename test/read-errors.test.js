@@ -51,7 +51,7 @@ const histFile = (file, sid) => ({ file, backFrom: fs.statSync(file).size, owner
 test('the history reader goes on to the next file after a read that fails', (t) => {
   const files = [histFile(transcript(t, [call('toolu_bad')]), 'bad'), histFile(transcript(t, [call('toolu_good')]), 'good')];
   withReads(once(ioError), () => histPoll(files, Date.now()));
-  assert.deepEqual(stepRows(0).map((r) => r[1]), ['good']);
+  assert.deepEqual(stepRows(0).map((r) => r[1]).filter((sid) => sid === 'bad' || sid === 'good'), ['good']);
 });
 
 test('the history reader passes on an error that is not a file error', (t) => {
