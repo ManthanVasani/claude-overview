@@ -71,6 +71,9 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   const big = 'x'.repeat(256 << 10);
   const writes = Array.from({ length: 24 }, (_, i) => '/x/f' + i + '.txt');
   b.session('long-history', { status: 'idle', statusUpdatedAt: Date.now() - 300000 }, [prompt(T0), ...writes.map((f, i) => call(T0 + 1000 + i, 'Write', { file_path: f, content: big })), ...Array.from({ length: 20 }, () => said(T0 + 2000, big))]);
+  // stat works and open fails, as on a transcript a root-owned session wrote
+  b.session('unreadable', { status: 'busy' }, [prompt(T0), said(T0 + 1000)]);
+  fs.chmodSync(b.transcript('unreadable'), 0);
   const spawned = Date.now();
 
   await b.start();
@@ -88,6 +91,10 @@ test('the board reads each session from Claude Code status, on the /proc path', 
     if (act instanceof RegExp) assert.match(s.act || '', act);
     else assert.equal(s.act, act);
   };
+  await check('a session whose transcript cannot be opened: still listed', () => {
+    assert.throws(() => fs.openSync(b.transcript('unreadable'), 'r'), 'file modes must apply to the user running the tests');
+    assert.ok(view('unreadable'));
+  });
   const ALONE = 'Waiting for your permission';
 
   await check('waiting for permission, one open call: needs you, names the call', () => {
