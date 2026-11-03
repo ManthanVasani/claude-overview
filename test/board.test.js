@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const test = require('node:test');
 const { Board, runningToolShell, sleep, SERVER_TEST_MS } = require('./helpers/board');
-const { prompt, call, said, result, notification, PERMISSION, SCREEN, quote, SCRUB } = require('./helpers/claude-code');
+const { prompt, call, said, result, launched, notification, PERMISSION, SCREEN, quote, SCRUB } = require('./helpers/claude-code');
 
 // a line the board reads as a tool shell, kept running by its sleep
 const body = (word) => 'sleep 600; : /x/shell-snapshots/s.sh eval ' + word + ' && pwd -P >| /dev/null';
@@ -71,6 +71,16 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   const big = 'x'.repeat(256 << 10);
   const writes = Array.from({ length: 24 }, (_, i) => '/x/f' + i + '.txt');
   b.session('long-history', { status: 'idle', statusUpdatedAt: Date.now() - 300000 }, [prompt(T0), ...writes.map((f, i) => call(T0 + 1000 + i, 'Write', { file_path: f, content: big })), ...Array.from({ length: 20 }, () => said(T0 + 2000, big))]);
+  // past an agent's first read, so the launch before it is read only by looking back
+  const pad = () => Array.from({ length: 5 }, () => said(T0 + 3000, big));
+  b.session('agent-early-shell', { status: 'busy' }, [prompt(T0), call(T0 + 1000, 'Agent', { description: 'Watch the build', prompt: 'watch', subagent_type: 'general-purpose' }, 'toolAB')], b.shells(['sleep 600', b.task('bagent1')]));
+  b.agent('agent-early-shell', 'ab', { description: 'Watch the build', agentType: 'general-purpose', toolUseId: 'toolAB' }, [prompt(T0 + 2000), call(T0 + 2100, 'Bash', { command: 'npm run watch', description: 'Run the watcher', run_in_background: true }, 'tuAB'), launched(T0 + 2200, 'tuAB', 'bagent1'), ...pad(), call(Date.now() - 3000, 'Bash', { command: 'ls /x/tasks', description: 'List the task files' }, 'tuLs'), result(Date.now() - 2900, 'tuLs', null, 'bagent1.output')]);
+  b.session('wf-early-shell', { status: 'busy' }, [prompt(T0), said(T0 + 500)], b.shells(['sleep 600', b.task('bwf1')]));
+  b.workflow('wf-early-shell', 'wf_early1', 'w1', 'build:docs', [prompt(T0 + 2000), call(T0 + 2100, 'Bash', { command: 'npm run docs', description: 'Build the docs', run_in_background: true }, 'tuWF'), launched(T0 + 2200, 'tuWF', 'bwf1'), ...pad(), call(Date.now() - 3000, 'Read', { file_path: '/x/docs.md' }, 'tuWR'), result(Date.now() - 2900, 'tuWR')]);
+  // the shell first shows once the board has read the agent and seen it finish
+  const shellGo = b.task('go');
+  b.session('wf-closed-shell', { status: 'busy' }, [prompt(T0), said(T0 + 500)], b.shells('while [ ! -e ' + shellGo + ' ]; do sleep 0.1; done;', ['sleep 600', b.task('bwf2')]));
+  const closedJournal = b.workflow('wf-closed-shell', 'wf_closed1', 'w2', 'build:site', [prompt(T0 + 2000), call(T0 + 2100, 'Bash', { command: 'npm run site', description: 'Build the site', run_in_background: true }, 'tuW2'), launched(T0 + 2200, 'tuW2', 'bwf2'), ...pad(), call(Date.now() - 3000, 'Bash', { command: 'ls /x/tasks', description: 'List the task files' }, 'tuW2l'), result(Date.now() - 2900, 'tuW2l', null, 'bwf2.output')]);
   const spawned = Date.now();
 
   await b.start();
@@ -155,14 +165,20 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   b.append('notify-turn', [notification(turnAt - 1500, 'b1'), said(turnAt - 1000)]);
   b.writeReg('notify-turn', { status: 'idle', statusUpdatedAt: turnAt });
   b.restart('restart', { status: 'idle', statusUpdatedAt: turnAt, startedAt: turnAt - 1000 });
+  fs.appendFileSync(closedJournal, JSON.stringify({ type: 'result', agentId: 'w2', result: {} }) + '\n');
   await b.polls(2);
   // a shell nobody claims is listed as a background command after 5 s
   snap = await b.until(spawned + 6000);
+  const goAt = Date.now();
+  fs.writeFileSync(shellGo, '');
 
   await check('a child that is not a tool shell beside three calls: no tool shell is listed as a background command', () => assert.deepEqual(view('phantom').shells || [], []));
   await check('background shells the transcript does not name: each shows its own command', () => {
     assert.deepEqual((view('unknown-bg').shells || []).map((x) => x.desc).sort(), ["$ build --tag 'v1' < /dev/null", '$ deploy']);
   });
+  const early = (key) => (view(key).shells || []).map((x) => [x.desc, x.owner, x.startedAt]);
+  await check("a background shell an agent started before the part of its transcript read first, named again later: the agent's launch", () => assert.deepEqual(early('agent-early-shell'), [['Run the watcher', 'ab', T0 + 2100]]));
+  await check('a background shell a workflow agent started before the part of its transcript read first: its launch and its agent', () => assert.deepEqual(early('wf-early-shell'), [['Build the docs', 'wf:wf_early1:w1', T0 + 2100]]));
   await check('a screen opened while working: stays working', () => assert.equal(st('screen-busy').state, 'working'));
   await check("a screen opened while a command's turn starts: stays working", () => assert.equal(st('cmd-under-screen').state, 'working'));
   await check('a prompt and a screen between two polls: working', () => assert.equal(st('prompt-under-screen').state, 'working'));
@@ -212,5 +228,7 @@ test('the board reads each session from Claude Code status, on the /proc path', 
     assert.ok(list.some((x) => x.startsWith('stopped')), JSON.stringify(list));
     for (const x of list) if (x.startsWith('stopped')) assert.match(x, /Stop late|make late-stop/);
   });
+  snap = await b.until(goAt + 6000);
+  await check('a background shell a finished workflow agent started before the part of its transcript read first, named again later: its launch', () => assert.deepEqual((view('wf-closed-shell').shells || []).map((x) => [x.desc, x.owner]), [['Build the site', 'wf:wf_closed1:w2']]));
   await check('the server writes nothing to stderr', () => assert.equal(b.errors.trim(), ''));
 });
