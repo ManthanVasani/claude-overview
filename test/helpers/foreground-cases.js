@@ -100,7 +100,7 @@ function suite(mac) {
     for (const { seed, t } of runs(true)) assert.deepEqual(t.wrong.slice(0, 3), [], 'seed ' + seed);
   });
   test('a waiting call not yet written: only an open call that starts no process can take its name', () => {
-    for (const { seed, t } of runs(false)) assert.deepEqual(t.lateNamedShell.slice(0, 3), [], 'seed ' + seed);
+    for (const { seed, t } of runs(false).concat(runs(true))) assert.deepEqual(t.lateNamedShell.slice(0, 3), [], 'seed ' + seed);
   });
 }
 
