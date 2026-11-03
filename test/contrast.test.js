@@ -50,7 +50,10 @@ function resolve(v, scope) {
   return m[2] ? resolve(m[2], scope) : undefined;
 }
 
-const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+function rgb(h) {
+  assert.match(String(h), /^#[0-9a-f]{6}$/i, 'not a colour this check can read: ' + h);
+  return [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+}
 const over = (c, a, base) => c.map((v, i) => v * a + base[i] * (1 - a));
 function lum(c) {
   const [r, g, b] = c.map((v) => {
@@ -68,19 +71,26 @@ const STATES = [...new Set(RULES.filter((r) => '--c' in r.decls).flatMap((r) => 
   .map((s) => /^\.c-([\w-]+)$/.exec(s)).filter(Boolean).map((m) => m[1]))].filter((st) => st !== 'more');
 const card = rgb(resolve('var(--card)', {}));
 const hovered = rgb(resolve(decl('.card:hover', 'background'), {}));
-const panel = rgb(decl('.panel', 'background'));
+const panel = rgb(resolve(decl('.panel', 'background'), {}));
 
 function cardsOf(st) {
   const bg = decl('.c-' + st + ' > .card', 'background');
   if (!bg) return [card];
-  if (bg.startsWith('#')) return [rgb(bg)];
-  return [...bg.matchAll(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/g)].map((m) => over(m.slice(1, 4).map(Number), Number(m[4]), card));
+  if (!bg.includes('gradient')) return [rgb(resolve(bg, {}))];
+  assert.match(bg, /^linear-gradient\((?:[^()]|rgba\([^()]*\))*\), var\(--card\)$/, 'not a card background this check can read: ' + bg);
+  const stops = [...bg.matchAll(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/g)];
+  assert.ok(stops.length, 'no stops in ' + bg);
+  return stops.map((m) => over(m.slice(1, 4).map(Number), Number(m[4]), card));
 }
 
 test('a status label meets 4.5:1 in every state, on cards and in the details panel', () => {
   for (const st of ['working', 'needs-you', 'error', 'lost', 'done', 'ended']) assert.ok(STATES.includes(st), st);
   assert.match(decl('.chip', 'background'), /^color-mix\(in srgb, var\(--c\) \d+%, transparent\)$/);
   const tint = Number(/(\d+)%/.exec(decl('.chip', 'background'))[1]) / 100;
+  const chipColour = RULES.filter((r) => 'color' in r.decls && r.sels.some((x) => /\.chip\b/.test(x)));
+  assert.deepEqual(chipColour.map((r) => r.sels.join(', ')), ['.chip']);
+  const ctHolders = RULES.filter((r) => '--ct' in r.decls).flatMap((r) => r.sels);
+  assert.deepEqual(ctHolders.filter((x) => !/^\.(node|p-state)\.c-[\w-]+$/.test(x)), []);
   const low = [];
   for (const st of STATES) {
     const c = resolve(decl('.c-' + st, '--c'), {});
@@ -89,7 +99,7 @@ test('a status label meets 4.5:1 in every state, on cards and in the details pan
       const text = rgb(resolve(decl('.chip', 'color'), { '--c': c, '--ct': ct }));
       for (const base of bases) {
         const r = ratio(text, over(rgb(c), tint, base));
-        if (r < 4.5) low.push(st + ' on the ' + where + ' ' + r.toFixed(2));
+        if (!(r >= 4.5)) low.push(st + ' on the ' + where + ' ' + r.toFixed(2));
       }
     }
   }

@@ -237,7 +237,7 @@ body.panel-open .alerts { right: calc(var(--panel) + 16px); }
 .c-your-turn { --c: var(--turn); }
 .c-needs-you { --c: var(--need); }
 .c-error, .c-retrying, .c-died, .c-failed, .c-lost { --c: var(--bad); }
-/* a lane carries its session's state class too */
+/* never on the bare state class: a lane carries its session's state class too */
 .node.c-error, .node.c-retrying, .node.c-died, .node.c-failed, .node.c-lost,
 .p-state.c-error, .p-state.c-retrying, .p-state.c-died, .p-state.c-failed, .p-state.c-lost { --ct: var(--bad-t); }
 .node.c-done, .node.c-stopped, .node.c-ended, .node.c-completed,
