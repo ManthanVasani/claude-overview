@@ -533,11 +533,12 @@ function histChunk(file, job, conv, cutoff, now) {
   return n;
 }
 
-// The text before the first quote appears verbatim inside the shell's `eval '...'` command line.
+// Claude Code's quoting rewrites each quote
 function cmdKey(cmd) {
   if (typeof cmd !== 'string') return null;
   const head = cmd.split(/['\n]/)[0].trim();
-  const key = head.slice(-60);
+  // the cut can leave half an emoji, and macOS ps prints the whole one
+  const key = head.slice(-60).replace(/^[\udc00-\udfff]/, '');
   return key.length >= 12 ? key : null;
 }
 
@@ -867,6 +868,19 @@ function alive(pid, procStart) {
   return procStart == null || p.token.replace(/\s+/g, ' ') === String(procStart).trim().replace(/\s+/g, ' ');
 }
 
+// Apple's ps prints each command through strvis(VIS_TAB | VIS_NL | VIS_NOSLASH), here in the C locale
+function psText(s) {
+  if (PROC_FS || typeof s !== 'string') return s;
+  let out = '';
+  for (const b of Buffer.from(s, 'utf8')) {
+    const c = b & 0x7f;
+    if (b >= 0x20 && b < 0x7f) out += String.fromCharCode(b);
+    else if (b === 0x09 || b === 0x0a || b === 0xa0) out += '\\' + b.toString(8).padStart(3, '0');
+    else out += (b & 0x80 ? 'M' : '') + (c < 0x20 || c === 0x7f ? '^' + String.fromCharCode(c ^ 0x40) : '-' + String.fromCharCode(c));
+  }
+  return out;
+}
+
 function cmdOf(pid) {
   if (!PROC_FS) { const p = psTable.get(String(pid)); return p ? p.cmd : null; }
   try { return fs.readFileSync('/proc/' + pid + '/cmdline', 'utf8').replace(/\0/g, ' '); } catch { return null; }
@@ -1007,7 +1021,12 @@ function matchForeground(S, now) {
     for (const p of c.pending.values()) {
       if (p.bg || p.at < since || !(p.name === 'Bash' || INSTANT_TOOLS.has(p.name))) continue;
       if (!first.has(c)) first.set(c, p);
-      if (p.name === 'Bash') fg.push({ c, p });
+      if (p.name !== 'Bash') continue;
+      if (p.ps === undefined) {
+        p.ps = psText(p.cmd);
+        p.word = PROC_FS ? null : psText(claudeQuote(p.cmd));
+      }
+      fg.push({ c, p });
     }
   }
   fg.sort((x, y) => x.p.at - y.p.at);
@@ -1038,7 +1057,7 @@ function matchForeground(S, now) {
     const near = fg.filter((x) => proc.start >= x.p.at - 3000);
     if (!near.length) continue;
     const ev = evalCommand(proc.cmd);
-    const hits = ev == null ? [] : near.filter((x) => x.p.cmd === ev);
+    const hits = near.filter((x) => x.p.ps != null && (x.p.ps === ev || (x.p.word != null && evalWordIs(proc.cmd, x.p.word))));
     if (hits.length === 1 && !running.has(hits[0].p)) {
       running.add(hits[0].p);
       // a stray child can take this shell's pairing, and an unpaired shell is read as a background one
@@ -1079,6 +1098,18 @@ function shellWord(line, i) {
     i = end + 1;
   }
   return { cmd, end: i };
+}
+
+// macOS ps prints 0xA7 as M-', so its text cannot be parsed back
+function claudeQuote(cmd) {
+  if (typeof cmd !== 'string') return null;
+  if (/^[A-Za-z0-9_./:=@+,-]+$/.test(cmd)) return cmd;
+  return "'" + cmd.replace(/'/g, `'"'"'`) + "'";
+}
+
+function evalWordIs(line, word) {
+  const at = line ? line.lastIndexOf(' && pwd -P >| ') : -1;
+  return at >= 0 && line.slice(0, at).replace(/ \\?< \/dev\/null$/, '').endsWith(' eval ' + word);
 }
 
 // Claude Code does not say which call its prompt is for
@@ -1265,7 +1296,8 @@ function shellViews(S, now) {
   for (const k of S.tasks.values()) {
     let proc = S.alive ? running.get(k.id) : null;
     if (!proc && S.alive && k.kind === 'monitor' && k.cmdKey) {
-      for (const p of S.procs.values()) if (!p.task && p.cmd && p.cmd.indexOf(k.cmdKey) !== -1) { proc = p; break; }
+      const key = psText(k.cmdKey);
+      for (const p of S.procs.values()) if (!p.task && p.cmd && p.cmd.indexOf(key) !== -1) { proc = p; break; }
     }
     const end = S.ends.get(k.id);
     let state;
