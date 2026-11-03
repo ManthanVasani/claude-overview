@@ -82,8 +82,9 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   b.session('wf-done-shell', { status: 'busy' }, [prompt(T0), said(T0 + 500)], b.shells(['sleep 600', b.task('bwf2')]));
   const doneJournal = b.workflow('wf-done-shell', 'wf_done1', 'w2', 'build:site', [prompt(T0 + 2000), call(T0 + 2100, 'Bash', { command: 'npm run site', description: 'Build the site', run_in_background: true }, 'tuW2'), launched(T0 + 2200, 'tuW2', 'bwf2'), ...pad(), call(Date.now() - 3000, 'Bash', { command: 'ls /x/tasks', description: 'List the task files' }, 'tuW2l'), result(Date.now() - 2900, 'tuW2l', null, 'bwf2.output')]);
   fs.appendFileSync(doneJournal, JSON.stringify({ type: 'result', agentId: 'w2', result: {} }) + '\n');
-  b.session('manual-shell', { status: 'busy' }, [prompt(T0), call(T0 + 1000, 'Agent', { description: 'Start it', prompt: 'start', subagent_type: 'general-purpose' }, 'toolMB')], b.shells(['sleep 600', b.task('bman1')]));
-  b.agent('manual-shell', 'mb', { description: 'Start it', agentType: 'general-purpose', toolUseId: 'toolMB' }, [prompt(T0 + 2000), call(T0 + 2100, 'Bash', { command: 'npm start', description: 'Start the app' }, 'tuMb'), result(T0 + 2200, 'tuMb', { backgroundTaskId: 'bman1' }, 'Command was manually backgrounded by user with ID: bman1. Output is being written to: /x/tasks/bman1.output'), ...pad()]);
+  const manual = (key, id, data) => b.session(key, { status: 'busy' }, [prompt(T0), call(T0 + 1000, 'Bash', { command: 'npm start', description: 'Start the app' }, 'tuMb'), result(T0 + 1100, 'tuMb', data, 'Command was manually backgrounded by user with ID: ' + id + '. Output is being written to: /x/tasks/' + id + '.output'), said(T0 + 3000, 'x'.repeat(SESSION_FIRST_BYTES))], b.shells(['sleep 600', b.task(id)]));
+  manual('manual-shell', 'bman1', { backgroundTaskId: 'bman1' });
+  manual('manual-text-shell', 'bman2', null);
   // the first read starts at the line it cuts, a backwards chunk after it: either can hold a result without its call
   const straddle = (resultLine, sidechain, tail) => {
     const json = (l) => JSON.stringify(sidechain ? Object.assign(l, { isSidechain: true }) : l).length + 1;
@@ -204,7 +205,8 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   await check("a background shell an agent started before the part of its transcript read first, with later calls naming its id: the agent's launch", () => assert.deepEqual(early('agent-early-shell'), [['Run the watcher', 'ab', T0 + 2100]]));
   await check('a background shell a workflow agent started before the part of its transcript read first: its launch and its agent', () => assert.deepEqual(early('wf-early-shell'), [['Build the docs', 'wf:wf_early1:w1', T0 + 2100]]));
   await check('a background shell of a workflow agent the board never read, with a later call naming its id: its launch and its agent', () => assert.deepEqual(early('wf-done-shell'), [['Build the site', 'wf:wf_done1:w2', T0 + 2100]]));
-  await check('a command backgrounded by hand before the part of the transcript read first: its launch', () => assert.deepEqual(early('manual-shell'), [['Start the app', 'mb', T0 + 2100]]));
+  await check('a command backgrounded by hand before the part of the transcript read first: its launch', () => assert.deepEqual(early('manual-shell'), [['Start the app', null, T0 + 1000]]));
+  await check('a command backgrounded by hand whose result has no result data, before the first read: its launch', () => assert.deepEqual(early('manual-text-shell'), [['Start the app', null, T0 + 1000]]));
   await check("a background launch whose call is before an agent's first read and whose result is after it: the launch", () => assert.deepEqual(early('agent-edge-shell'), [['Run the edge', 'ae', T0 + 2100]]));
   await check("a background launch whose call is before the session's first read and whose result is after it: the launch", () => assert.deepEqual(early('session-edge-shell'), [['Serve on the edge', null, T0 + 1000]]));
   await check("a background launch whose call and result are in different chunks of the search back: the launch", () => assert.deepEqual(early('chunk-edge-shell'), [['Run the chunk job', 'ac', T0 + 2100]]));
