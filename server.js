@@ -533,7 +533,7 @@ function histChunk(file, job, conv, cutoff, now) {
   return n;
 }
 
-// Claude Code writes the text before the first quote unchanged inside the shell's `eval '...'` word.
+// Claude Code's quoting rewrites each quote, so the key is the text before the first one
 function cmdKey(cmd) {
   if (typeof cmd !== 'string') return null;
   const head = cmd.split(/['\n]/)[0].trim();
