@@ -2,9 +2,11 @@
 
 const assert = require('node:assert/strict');
 const fs = require('fs');
+const path = require('path');
 const test = require('node:test');
 const { Board, runningToolShell, sleep, SERVER_TEST_MS } = require('./helpers/board');
 const { prompt, call, said, result, launched, notification, PERMISSION, SCREEN, quote, SCRUB } = require('./helpers/claude-code');
+const { AGENT_FIRST_BYTES, BACKFILL_CHUNK, BACKFILL_PER_FILE, BACKFILL_PER_RUN, SESSION_FIRST_BYTES } = require('../lib/constants');
 
 // a line the board reads as a tool shell, kept running by its sleep
 const body = (word) => 'sleep 600; : /x/shell-snapshots/s.sh eval ' + word + ' && pwd -P >| /dev/null';
@@ -74,13 +76,36 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   // past an agent's first read, so the launch before it is read only by looking back
   const pad = () => Array.from({ length: 5 }, () => said(T0 + 3000, big));
   b.session('agent-early-shell', { status: 'busy' }, [prompt(T0), call(T0 + 1000, 'Agent', { description: 'Watch the build', prompt: 'watch', subagent_type: 'general-purpose' }, 'toolAB')], b.shells(['sleep 600', b.task('bagent1')]));
-  b.agent('agent-early-shell', 'ab', { description: 'Watch the build', agentType: 'general-purpose', toolUseId: 'toolAB' }, [prompt(T0 + 2000), call(T0 + 2100, 'Bash', { command: 'npm run watch', description: 'Run the watcher', run_in_background: true }, 'tuAB'), launched(T0 + 2200, 'tuAB', 'bagent1'), ...pad(), call(Date.now() - 3000, 'Bash', { command: 'ls /x/tasks', description: 'List the task files' }, 'tuLs'), result(Date.now() - 2900, 'tuLs', null, 'bagent1.output')]);
+  b.agent('agent-early-shell', 'ab', { description: 'Watch the build', agentType: 'general-purpose', toolUseId: 'toolAB' }, [prompt(T0 + 2000), call(T0 + 2100, 'Bash', { command: 'npm run watch', description: 'Run the watcher', run_in_background: true }, 'tuAB'), launched(T0 + 2200, 'tuAB', 'bagent1'), call(T0 + 2300, 'Bash', { command: 'tail /x/tasks/bagent1.output', description: 'Read the watch output' }, 'tuTl'), result(T0 + 2400, 'tuTl', null, 'bagent1: watching'), call(T0 + 2500, 'Bash', { command: 'grep -h bagent1 /x/log.jsonl', description: 'Search the log' }, 'tuGr'), result(T0 + 2600, 'tuGr', null, '{"text":"Command running in background with ID: bagent1."}'), ...pad(), call(Date.now() - 4000, 'Bash', { command: 'ls /x/tasks', description: 'List the task files' }, 'tuLs'), result(Date.now() - 3900, 'tuLs', null, 'bagent1.output'), call(Date.now() - 3000, 'Read', { file_path: '/x/notes.md' }, 'tuRd'), result(Date.now() - 2900, 'tuRd', null, 'Command running in background with ID: bagent1.')]);
   b.session('wf-early-shell', { status: 'busy' }, [prompt(T0), said(T0 + 500)], b.shells(['sleep 600', b.task('bwf1')]));
   b.workflow('wf-early-shell', 'wf_early1', 'w1', 'build:docs', [prompt(T0 + 2000), call(T0 + 2100, 'Bash', { command: 'npm run docs', description: 'Build the docs', run_in_background: true }, 'tuWF'), launched(T0 + 2200, 'tuWF', 'bwf1'), ...pad(), call(Date.now() - 3000, 'Read', { file_path: '/x/docs.md' }, 'tuWR'), result(Date.now() - 2900, 'tuWR')]);
-  // the shell first shows once the board has read the agent and seen it finish
-  const shellGo = b.task('go');
-  b.session('wf-closed-shell', { status: 'busy' }, [prompt(T0), said(T0 + 500)], b.shells('while [ ! -e ' + shellGo + ' ]; do sleep 0.1; done;', ['sleep 600', b.task('bwf2')]));
-  const closedJournal = b.workflow('wf-closed-shell', 'wf_closed1', 'w2', 'build:site', [prompt(T0 + 2000), call(T0 + 2100, 'Bash', { command: 'npm run site', description: 'Build the site', run_in_background: true }, 'tuW2'), launched(T0 + 2200, 'tuW2', 'bwf2'), ...pad(), call(Date.now() - 3000, 'Bash', { command: 'ls /x/tasks', description: 'List the task files' }, 'tuW2l'), result(Date.now() - 2900, 'tuW2l', null, 'bwf2.output')]);
+  b.session('wf-done-shell', { status: 'busy' }, [prompt(T0), said(T0 + 500)], b.shells(['sleep 600', b.task('bwf2')]));
+  const doneJournal = b.workflow('wf-done-shell', 'wf_done1', 'w2', 'build:site', [prompt(T0 + 2000), call(T0 + 2100, 'Bash', { command: 'npm run site', description: 'Build the site', run_in_background: true }, 'tuW2'), launched(T0 + 2200, 'tuW2', 'bwf2'), ...pad(), call(Date.now() - 3000, 'Bash', { command: 'ls /x/tasks', description: 'List the task files' }, 'tuW2l'), result(Date.now() - 2900, 'tuW2l', null, 'bwf2.output')]);
+  fs.appendFileSync(doneJournal, JSON.stringify({ type: 'result', agentId: 'w2', result: {} }) + '\n');
+  b.session('manual-shell', { status: 'busy' }, [prompt(T0), call(T0 + 1000, 'Agent', { description: 'Start it', prompt: 'start', subagent_type: 'general-purpose' }, 'toolMB')], b.shells(['sleep 600', b.task('bman1')]));
+  b.agent('manual-shell', 'mb', { description: 'Start it', agentType: 'general-purpose', toolUseId: 'toolMB' }, [prompt(T0 + 2000), call(T0 + 2100, 'Bash', { command: 'npm start', description: 'Start the app' }, 'tuMb'), result(T0 + 2200, 'tuMb', { backgroundTaskId: 'bman1' }, 'Command was manually backgrounded by user with ID: bman1. Output is being written to: /x/tasks/bman1.output'), ...pad()]);
+  // the first read starts at the line it cuts, so the launch's result is read and its call is not
+  const straddle = (resultLine, sidechain, firstBytes) => {
+    const json = (l) => JSON.stringify(sidechain ? Object.assign(l, { isSidechain: true }) : l).length + 1;
+    const rest = said(T0 + 3000, '');
+    rest.message.content[0].text = 'x'.repeat(firstBytes + 50 - json(resultLine) - json(rest));
+    return [resultLine, rest];
+  };
+  b.session('agent-edge-shell', { status: 'busy' }, [prompt(T0), call(T0 + 1000, 'Agent', { description: 'Run on the edge', prompt: 'edge', subagent_type: 'general-purpose' }, 'toolAE')], b.shells(['sleep 600', b.task('bedge1')]));
+  b.agent('agent-edge-shell', 'ae', { description: 'Run on the edge', agentType: 'general-purpose', toolUseId: 'toolAE' }, [prompt(T0 + 2000), call(T0 + 2100, 'Bash', { command: 'npm run edge', description: 'Run the edge', run_in_background: true }, 'tuEd'), ...straddle(launched(T0 + 2200, 'tuEd', 'bedge1'), true, AGENT_FIRST_BYTES)]);
+  b.session('session-edge-shell', { status: 'busy' }, [prompt(T0), call(T0 + 1000, 'Bash', { command: 'npm run serve', description: 'Serve on the edge', run_in_background: true }, 'tuSe'), ...straddle(launched(T0 + 1100, 'tuSe', 'bsedge1'), false, SESSION_FIRST_BYTES)], b.shells(['sleep 600', b.task('bsedge1')]));
+  b.session('quoted-shell', { status: 'busy' }, [prompt(T0), call(T0 + 1000, 'Bash', { command: 'npm run server', description: 'Run the server', run_in_background: true }, 'tuQs'), launched(T0 + 1100, 'tuQs', 'bquote1'), call(T0 + 1200, 'Bash', { command: 'grep -h bquote1 /x/log.jsonl', description: 'Search the log' }, 'tuQg'), result(T0 + 1300, 'tuQg', null, '{"text":"Command running in background with ID: bquote1."}')], b.shells(['sleep 600', b.task('bquote1')]));
+  b.session('budget-shell', { status: 'busy' }, [prompt(T0), call(T0 + 1000, 'Agent', { description: 'Run the job', prompt: 'job', subagent_type: 'general-purpose' }, 'toolRB')], b.shells(['sleep 600', b.task('bbudget1')]));
+  const budgetAgent = b.agent('budget-shell', 'rb', { description: 'Run the job', agentType: 'general-purpose', toolUseId: 'toolRB' }, [prompt(T0 + 2000), call(T0 + 2100, 'Bash', { command: 'npm run job', description: 'Run the job', run_in_background: true }, 'tuRb'), launched(T0 + 2200, 'tuRb', 'bbudget1'), ...pad()]).replace('.meta.json', '.jsonl');
+  fs.utimesSync(budgetAgent, new Date(Date.now() - 60000), new Date(Date.now() - 60000));
+  // sparse, so they take no disk; newer than the agent, so a search by age alone reaches them first
+  for (let i = 1; i <= BACKFILL_PER_RUN / BACKFILL_PER_FILE; i++) {
+    const journal = b.workflow('budget-shell', 'wf_big' + i, 'g' + i, 'build:big', [prompt(T0 + 2000), said(T0 + 2100)]);
+    const fd = fs.openSync(path.join(path.dirname(journal), 'agent-g' + i + '.jsonl'), 'r+');
+    for (let at = BACKFILL_CHUNK; at < BACKFILL_PER_FILE; at += BACKFILL_CHUNK) fs.writeSync(fd, '\n', at);
+    fs.writeSync(fd, '\n', BACKFILL_PER_FILE);
+    fs.closeSync(fd);
+  }
   const spawned = Date.now();
 
   await b.start();
@@ -165,20 +190,23 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   b.append('notify-turn', [notification(turnAt - 1500, 'b1'), said(turnAt - 1000)]);
   b.writeReg('notify-turn', { status: 'idle', statusUpdatedAt: turnAt });
   b.restart('restart', { status: 'idle', statusUpdatedAt: turnAt, startedAt: turnAt - 1000 });
-  fs.appendFileSync(closedJournal, JSON.stringify({ type: 'result', agentId: 'w2', result: {} }) + '\n');
   await b.polls(2);
   // a shell nobody claims is listed as a background command after 5 s
   snap = await b.until(spawned + 6000);
-  const goAt = Date.now();
-  fs.writeFileSync(shellGo, '');
 
   await check('a child that is not a tool shell beside three calls: no tool shell is listed as a background command', () => assert.deepEqual(view('phantom').shells || [], []));
   await check('background shells the transcript does not name: each shows its own command', () => {
     assert.deepEqual((view('unknown-bg').shells || []).map((x) => x.desc).sort(), ["$ build --tag 'v1' < /dev/null", '$ deploy']);
   });
   const early = (key) => (view(key).shells || []).map((x) => [x.desc, x.owner, x.startedAt]);
-  await check("a background shell an agent started before the part of its transcript read first, named again later: the agent's launch", () => assert.deepEqual(early('agent-early-shell'), [['Run the watcher', 'ab', T0 + 2100]]));
+  await check("a background shell an agent started before the part of its transcript read first, with later calls naming its id: the agent's launch", () => assert.deepEqual(early('agent-early-shell'), [['Run the watcher', 'ab', T0 + 2100]]));
   await check('a background shell a workflow agent started before the part of its transcript read first: its launch and its agent', () => assert.deepEqual(early('wf-early-shell'), [['Build the docs', 'wf:wf_early1:w1', T0 + 2100]]));
+  await check('a background shell of a workflow agent the board never read, with a later call naming its id: its launch and its agent', () => assert.deepEqual(early('wf-done-shell'), [['Build the site', 'wf:wf_done1:w2', T0 + 2100]]));
+  await check('a command backgrounded by hand before the part of the transcript read first: its launch', () => assert.deepEqual(early('manual-shell'), [['Start the app', 'mb', T0 + 2100]]));
+  await check("a background launch whose call is before an agent's first read and whose result is after it: the launch", () => assert.deepEqual(early('agent-edge-shell'), [['Run the edge', 'ae', T0 + 2100]]));
+  await check("a background launch whose call is before the session's first read and whose result is after it: the launch", () => assert.deepEqual(early('session-edge-shell'), [['Serve on the edge', null, T0 + 1000]]));
+  await check("a later command whose output quotes a running shell's launch: that shell's own launch", () => assert.deepEqual(early('quoted-shell'), [['Run the server', null, T0 + 1000]]));
+  await check("a background shell an agent started before its first read, with workflow agents using up the search: the agent's launch", () => assert.deepEqual(early('budget-shell'), [['Run the job', 'rb', T0 + 2100]]));
   await check('a screen opened while working: stays working', () => assert.equal(st('screen-busy').state, 'working'));
   await check("a screen opened while a command's turn starts: stays working", () => assert.equal(st('cmd-under-screen').state, 'working'));
   await check('a prompt and a screen between two polls: working', () => assert.equal(st('prompt-under-screen').state, 'working'));
@@ -228,7 +256,5 @@ test('the board reads each session from Claude Code status, on the /proc path', 
     assert.ok(list.some((x) => x.startsWith('stopped')), JSON.stringify(list));
     for (const x of list) if (x.startsWith('stopped')) assert.match(x, /Stop late|make late-stop/);
   });
-  snap = await b.until(goAt + 6000);
-  await check('a background shell a finished workflow agent started before the part of its transcript read first, named again later: its launch', () => assert.deepEqual((view('wf-closed-shell').shells || []).map((x) => [x.desc, x.owner]), [['Build the site', 'wf:wf_closed1:w2']]));
   await check('the server writes nothing to stderr', () => assert.equal(b.errors.trim(), ''));
 });
