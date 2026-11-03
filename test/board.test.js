@@ -64,6 +64,10 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   b.session('prompt-after-end-screen', SCREEN, [prompt(T0), said(T0 + 1000), prompt(Date.now() - 2000)]);
   b.session('notify-under-screen', { status: 'idle', statusUpdatedAt: Date.now() - 300000 }, [prompt(Date.now() - 400000), said(Date.now() - 399000)]);
   b.session('no-version', { status: 'busy', version: null }, [prompt(Date.now() - 30000), call(Date.now() - 25000, 'Bash', { command: 'make nover' })]);
+  const H0 = Date.now();
+  b.session('held', Object.assign({ statusUpdatedAt: H0 }, PERMISSION), [prompt(H0 - 20000), call(H0 - 19000, 'Agent', { description: 'Write the notes', prompt: 'write', subagent_type: 'general-purpose' }, 'toolH1'), call(H0 - 19000, 'Agent', { description: 'Fetch the page', prompt: 'fetch', subagent_type: 'general-purpose' }, 'toolH2')]);
+  b.agent('held', 'h1', { description: 'Write the notes', agentType: 'general-purpose', toolUseId: 'toolH1' }, [prompt(H0 - 18000), call(H0 - 8000, 'Write', { file_path: '/x/notes.txt', content: 'hi' })]);
+  b.agent('held', 'h2', { description: 'Fetch the page', agentType: 'general-purpose', toolUseId: 'toolH2' }, [prompt(H0 - 18000), call(H0 - 2000, 'WebFetch', { url: 'https://example.com/' })]);
   b.session('old-flight', PERMISSION, [prompt(T0), call(T0 + 1000, 'WebFetch', { url: 'https://example.com/slow' })]);
   const old = Date.now() - 400000;
   b.session('restart', { status: 'idle', statusUpdatedAt: Date.now() - 300000 }, [prompt(old), said(old + 1000)]);
@@ -111,9 +115,9 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   await check('a screen gives no wording', () => assert.equal(view('screen-idle').waiting.text, null));
   await check('needs rows: only the sessions that wait', () => {
     const rows = snap.attention.filter((a) => a.level === 'needs').map((a) => a.session).sort();
-    assert.deepEqual(rows, ['agent', 'agent', 'answer', 'ask', 'bg-wait', 'hook', 'late', 'lone', 'no-status', 'no-version', 'old-flight', 'old-beta', 'old-version', 'one-word', 'sandbox', 'same-head', 'stop-late', 'stopped-agent', 'twin', 'two', 'two-shells', 'stolen', 'quote-tail', 'prelude'].sort());
+    assert.deepEqual(rows, ['agent', 'agent', 'answer', 'ask', 'bg-wait', 'held', 'hook', 'late', 'lone', 'no-status', 'no-version', 'old-flight', 'old-beta', 'old-version', 'one-word', 'sandbox', 'same-head', 'stop-late', 'stopped-agent', 'twin', 'two', 'two-shells', 'stolen', 'quote-tail', 'prelude'].sort());
   });
-  await check('the header counts each session that needs you once', () => assert.equal(snap.totals.needsYou, 23));
+  await check('the header counts each session that needs you once', () => assert.equal(snap.totals.needsYou, 24));
   await check('a waiting call beside a running one that is its command and a quote more: names the waiting one', () => needsYou('quote-tail', /echo hi$|Say hi/));
   await check("a waiting call beside a running one whose shell evals Claude Code's prelude first: names the waiting one", () => needsYou('prelude', /git push$|Push/));
   await check('two open calls, one written after the prompt: names neither', () => needsYou('late', ALONE));
@@ -126,6 +130,10 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   await check('a sandbox request: needs you, names no call', () => needsYou('sandbox', ALONE));
   await check('a background command waiting for approval: named', () => needsYou('bg-wait', /make serve|Serve it/));
   await check('a prompt that starts long after the only open call: names no call', () => needsYou('old-flight', ALONE));
+  await check("a prompt a hook held back more than 5 s, beside another agent's newer open call: names no call and no agent", () => {
+    needsYou('held', ALONE);
+    assert.deepEqual(view('held').agents.filter((a) => a.trouble && a.trouble.kind === 'permission').map((a) => a.desc), []);
+  });
   await check('a status with no readable version: the timing guess names the call', () => needsYou('no-version', /make nover/));
   await check('a screen open when the server starts, over a prompt sent after the last turn ended: working', () => assert.equal(st('prompt-after-end-screen').state, 'working'));
   await check('a version not known to write waiting: the timing guess names the call', () => needsYou('old-version', /make old/));
