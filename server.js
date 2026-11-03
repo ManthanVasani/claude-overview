@@ -998,8 +998,7 @@ function liveConvs(S) {
   return out;
 }
 
-// Pairs each running process with the foreground tool call that started it, and
-// flags foreground calls that never started a process (a permission prompt).
+// A foreground call that never starts a process is taken as a permission prompt.
 function matchForeground(S, now) {
   const fg = [];
   const since = (S.reg.startedAt || 0) - 2000;
@@ -1034,7 +1033,7 @@ function matchForeground(S, now) {
   const running = new Set();
   let guessed = false;
   for (const proc of S.procs.values()) {
-    // a hook, such as one for permission requests, can run while its call waits
+    // a hook can run while its call waits for permission
     if (!(proc.task || TOOL_SHELL_RE.test(proc.cmd || '')) || (proc.task && S.tasks.has(proc.task))) continue;
     const near = fg.filter((x) => proc.start >= x.p.at - 3000);
     if (!near.length) continue;
@@ -1049,7 +1048,7 @@ function matchForeground(S, now) {
   return { used, running, guessed, blocked };
 }
 
-// Claude Code's tool shell evals a command quoted, each ' in it written as '"'"', or bare when it is one plain word
+// mirrors how Claude Code's tool shell quotes the command it evals
 function runsCommand(line, cmd) {
   if (!line || typeof cmd !== 'string') return false;
   if (line.indexOf("eval '" + cmd.replace(/'/g, `'"'"'`) + "'") !== -1) return true;
