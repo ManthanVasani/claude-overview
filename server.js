@@ -1037,7 +1037,8 @@ function matchForeground(S, now) {
     if (!(proc.task || TOOL_SHELL_RE.test(proc.cmd || '')) || (proc.task && S.tasks.has(proc.task))) continue;
     const near = fg.filter((x) => proc.start >= x.p.at - 3000);
     if (!near.length) continue;
-    const hits = near.filter((x) => runsCommand(proc.cmd, x.p.cmd));
+    const ev = evalCommand(proc.cmd);
+    const hits = ev == null ? [] : near.filter((x) => x.p.cmd === ev);
     if (hits.length === 1 && !running.has(hits[0].p)) {
       running.add(hits[0].p);
       // a stray child can take this shell's pairing, and an unpaired shell is read as a background one
@@ -1048,11 +1049,36 @@ function matchForeground(S, now) {
   return { used, running, guessed, blocked };
 }
 
-// mirrors how Claude Code's tool shell quotes the command it evals
-function runsCommand(line, cmd) {
-  if (!line || typeof cmd !== 'string') return false;
-  if (line.indexOf("eval '" + cmd.replace(/'/g, `'"'"'`) + "'") !== -1) return true;
-  return /^[\w./:=@+,-]+$/.test(cmd) && line.indexOf('eval ' + cmd + ' ') !== -1;
+// Claude Code's own text before the command can eval too
+function evalCommand(line) {
+  for (let at = line ? line.indexOf(' eval ') : -1; at >= 0; at = line.indexOf(' eval ', at + 1)) {
+    const w = shellWord(line, at + 6);
+    // older Claude Code wrote the redirect as \<
+    if (w && w.cmd && /^(?: \\?< \/dev\/null)? && pwd -P >\| /.test(line.slice(w.end, w.end + 30))) return w.cmd;
+  }
+  return null;
+}
+
+function shellWord(line, i) {
+  let cmd = '';
+  while (i < line.length && line[i] !== ' ') {
+    const q = line[i];
+    if (q === '\\') {
+      cmd += line.slice(i + 1, i + 2);
+      i += 2;
+      continue;
+    }
+    if (q !== "'" && q !== '"') {
+      cmd += q;
+      i++;
+      continue;
+    }
+    const end = line.indexOf(q, i + 1);
+    if (end < 0) return null;
+    cmd += line.slice(i + 1, end);
+    i = end + 1;
+  }
+  return { cmd, end: i };
 }
 
 // Claude Code does not say which call its prompt is for
@@ -1116,8 +1142,8 @@ function headlessOf(pid) {
 function fallbackDesc(pid) {
   const cmd = cmdOf(pid);
   if (cmd == null) return null;
-  const m = /eval '(.*?)(?:' <|'$)/.exec(cmd);
-  return '$ ' + oneLine((m ? m[1] : cmd).replace(/'\\''/g, "'"), 120);
+  const ev = evalCommand(cmd);
+  return '$ ' + oneLine(ev == null ? cmd : ev, 120);
 }
 
 function escapeRe(s) {
