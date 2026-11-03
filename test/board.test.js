@@ -101,7 +101,7 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   b.session('budget-shell', { status: 'busy' }, [prompt(T0), call(T0 + 1000, 'Agent', { description: 'Run the job', prompt: 'job', subagent_type: 'general-purpose' }, 'toolRB')], b.shells(['sleep 600', b.task('bbudget1')]));
   const budgetAgent = b.agent('budget-shell', 'rb', { description: 'Run the job', agentType: 'general-purpose', toolUseId: 'toolRB' }, [prompt(T0 + 2000), call(T0 + 2100, 'Bash', { command: 'npm run job', description: 'Run the job', run_in_background: true }, 'tuRb'), launched(T0 + 2200, 'tuRb', 'bbudget1'), ...pad()]).replace('.meta.json', '.jsonl');
   fs.utimesSync(budgetAgent, new Date(Date.now() - 60000), new Date(Date.now() - 60000));
-  // sparse, so they take no disk; newer than the agent, so a search by age alone reaches them first
+  // sparse; newer than the agent, so a search by age alone reaches them first
   for (let i = 1; i <= BACKFILL_PER_RUN / BACKFILL_PER_FILE; i++) {
     const journal = b.workflow('budget-shell', 'wf_big' + i, 'g' + i, 'build:big', [prompt(T0 + 2000), said(T0 + 2100)]);
     const fd = fs.openSync(path.join(path.dirname(journal), 'agent-g' + i + '.jsonl'), 'r+');
@@ -204,14 +204,14 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   const early = (key) => (view(key).shells || []).map((x) => [x.desc, x.owner, x.startedAt]);
   await check("a background shell an agent started before the part of its transcript read first, with later calls naming its id: the agent's launch", () => assert.deepEqual(early('agent-early-shell'), [['Run the watcher', 'ab', T0 + 2100]]));
   await check('a background shell a workflow agent started before the part of its transcript read first: its launch and its agent', () => assert.deepEqual(early('wf-early-shell'), [['Build the docs', 'wf:wf_early1:w1', T0 + 2100]]));
-  await check('a background shell of a workflow agent the board never read, with a later call naming its id: its launch and its agent', () => assert.deepEqual(early('wf-done-shell'), [['Build the site', 'wf:wf_done1:w2', T0 + 2100]]));
+  await check('a background shell of a workflow agent the board never read, with a later command whose output names its id: its launch and its agent', () => assert.deepEqual(early('wf-done-shell'), [['Build the site', 'wf:wf_done1:w2', T0 + 2100]]));
   await check('a command backgrounded by hand before the part of the transcript read first: its launch', () => assert.deepEqual(early('manual-shell'), [['Start the app', null, T0 + 1000]]));
-  await check('a command backgrounded by hand whose result has no result data, before the first read: its launch', () => assert.deepEqual(early('manual-text-shell'), [['Start the app', null, T0 + 1000]]));
+  await check('a command backgrounded by hand before the first read, known only from its result text: its launch', () => assert.deepEqual(early('manual-text-shell'), [['Start the app', null, T0 + 1000]]));
   await check("a background launch whose call is before an agent's first read and whose result is after it: the launch", () => assert.deepEqual(early('agent-edge-shell'), [['Run the edge', 'ae', T0 + 2100]]));
   await check("a background launch whose call is before the session's first read and whose result is after it: the launch", () => assert.deepEqual(early('session-edge-shell'), [['Serve on the edge', null, T0 + 1000]]));
   await check("a background launch whose call and result are in different chunks of the search back: the launch", () => assert.deepEqual(early('chunk-edge-shell'), [['Run the chunk job', 'ac', T0 + 2100]]));
   await check("a later command whose output quotes a running shell's launch: that shell's own launch", () => assert.deepEqual(early('quoted-shell'), [['Run the server', null, T0 + 1000]]));
-  await check("a background shell an agent started before its first read, with workflow agents using up the search: the agent's launch", () => assert.deepEqual(early('budget-shell'), [['Run the job', 'rb', T0 + 2100]]));
+  await check("a background shell an agent started before its first read, with enough workflow agents to use up the search: the agent's launch", () => assert.deepEqual(early('budget-shell'), [['Run the job', 'rb', T0 + 2100]]));
   await check('a screen opened while working: stays working', () => assert.equal(st('screen-busy').state, 'working'));
   await check("a screen opened while a command's turn starts: stays working", () => assert.equal(st('cmd-under-screen').state, 'working'));
   await check('a prompt and a screen between two polls: working', () => assert.equal(st('prompt-under-screen').state, 'working'));
