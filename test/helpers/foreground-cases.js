@@ -94,7 +94,7 @@ const FLOOR = 0.6;
 function suite(mac) {
   let cached;
   const runs = () => cached || (cached = [1, 7, 42].map((seed) => ({ seed, t: run(10000, seed, mac) })));
-  test('the process path under test', () => assert.equal(PROC_FS, !mac));
+  test('the forced platform gives the ' + (mac ? 'macOS ps' : 'Linux /proc') + ' path', () => assert.equal(PROC_FS, !mac));
   test('a permission prompt raised as its call is written, over several agents: the waiting call is named, or none is', () => {
     for (const { seed, t } of runs()) {
       assert.deepEqual(t.wrong.slice(0, 3), [], 'seed ' + seed);

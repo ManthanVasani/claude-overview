@@ -51,7 +51,7 @@ class Board {
     return this.spawn('sleep', ['600']);
   }
 
-  // a process standing in for a session, whose child shells each write to a task file as a real tool shell does
+  // a process standing in for a session, so the shells it starts are that session's children
   shells(...steps) {
     const args = [];
     const script = steps.map((st) => {
@@ -159,7 +159,7 @@ class Board {
     });
   }
 
-  // the server's own errors go with a timeout, since they usually say why it never came
+  // the server's errors usually say why a wait timed out
   async waitFor(what, done, ms = 60000) {
     const end = Date.now() + ms;
     for (;;) {

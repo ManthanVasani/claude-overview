@@ -21,7 +21,7 @@ if (arg) {
 // npm gives it no nice, and a dashboard should not compete with the sessions it watches
 try { if (os.getPriority() < 10) os.setPriority(10); } catch (e) { /* it keeps the priority it started with */ }
 
-// loaded only past the argument check, so --version and --help work even when the server cannot load
+// loaded only past the argument check, so --version and --help work even when these cannot load
 const feed = require('./lib/feed');
 const { createServer } = require('./lib/http');
 const log = require('./lib/log');

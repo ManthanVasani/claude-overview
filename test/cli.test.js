@@ -7,6 +7,7 @@ const test = require('node:test');
 const { version } = require('../package.json');
 
 const SERVER = path.join(__dirname, '..', 'server.js');
+const LIB = path.join(__dirname, '..', 'lib') + path.sep;
 const run = (args, env) => cp.spawnSync(process.execPath, [SERVER, ...args], { encoding: 'utf8', timeout: 10000, env: Object.assign({}, process.env, env) });
 
 test('--version and -v print the version', () => {
@@ -36,7 +37,7 @@ test('a port that is not a port number exits 1 before anything starts', () => {
 });
 
 test('--version loads none of the server but its config', () => {
-  const probe = "process.on('exit', () => console.error(JSON.stringify(Object.keys(require.cache).filter((f) => f.includes(require('path').sep + 'lib' + require('path').sep)).map((f) => require('path').basename(f))))); process.argv[2] = '--version'; require(process.argv[1]);";
+  const probe = "process.on('exit', () => console.error(JSON.stringify(Object.keys(require.cache).filter((f) => f.startsWith(" + JSON.stringify(LIB) + ")).map((f) => require('path').basename(f))))); process.argv[2] = '--version'; require(process.argv[1]);";
   const r = cp.spawnSync(process.execPath, ['-e', probe, SERVER], { encoding: 'utf8', timeout: 10000 });
   assert.equal(r.stdout.trim(), version);
   assert.deepEqual(JSON.parse(r.stderr), ['config.js']);

@@ -205,8 +205,8 @@ every pull request runs, on Linux and on macOS.
   and what they share (`config`, `constants`, `files`, `text`, `log`).
 - `public/` is the page and its scripts.
 - `test/` holds the checks. On Linux they include the macOS ones, through a stand-in for macOS `ps`. Two need tools
-  that may be missing and are skipped without them: `lsof`, and a C compiler with `strvis` (on Linux it comes from
-  libbsd: `libbsd-dev` on Debian and Ubuntu).
+  that may be missing and are skipped without them: `lsof` (and on Linux procps `ps`), and a C compiler with
+  `strvis` (on Linux it comes from libbsd: `libbsd-dev` on Debian and Ubuntu).
 
 ## License
 

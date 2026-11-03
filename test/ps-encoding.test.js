@@ -57,7 +57,7 @@ test("the board's encoder agrees with the reference encoder on any text", () => 
 test("the board's encoder agrees with this machine's strvis", (t) => {
   const oracle = buildOracle();
   // CI always has one, so a missing one there is a broken check, not a skip
-  if (!oracle && !process.env.CI) return t.skip('no C compiler with strvis here (libbsd-dev on Linux)');
+  if (!oracle && process.env.CI !== 'true') return t.skip('no C compiler with strvis here (libbsd-dev on Linux)');
   assert.ok(oracle, 'no C compiler with strvis');
   try {
     const strings = anyText(9, 5000).concat(commands(9, 5000));

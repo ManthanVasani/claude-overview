@@ -53,7 +53,7 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   b.session('stolen', Object.assign({ statusUpdatedAt: S0 }, PERMISSION), [prompt(S0 - 5000), call(S0 - 500, 'Bash', { command: 'sleep 30', description: 'Sleep thirty' })], stolen);
   b.session('unknown-bg', { status: 'shell' }, [prompt(T0), said(T0 + 1000)], b.shells([runningToolShell(['build'], quote("build --tag 'v1' < /dev/null")), b.task('bdesc1')], [runningToolShell(['deploy'], 'deploy < /dev/null'), b.task('bdesc2')]));
   b.session('quote-tail', PERMISSION, [prompt(Date.now() - 5000), call(Date.now() - 3000, 'Bash', { command: 'echo hi', description: 'Say hi' }), call(Date.now() - 2000, 'Bash', { command: "echo hi'there'", description: 'Say there' })], b.shells([runningToolShell(['echo'], quote("echo hi'there'")), b.task('bquote')]));
-  // the scrub needs __cc_name set to run
+  // without __cc_name the scrub fails and the command after it never runs
   b.session('prelude', PERMISSION, [prompt(Date.now() - 5000), call(Date.now() - 3000, 'Bash', { command: 'git push', description: 'Push' }), call(Date.now() - 2000, 'Bash', { command: 'npm test', description: 'Run tests' })], b.shells([runningToolShell(['npm'], quote('npm test'), '__cc_name=PATH; ' + SCRUB), b.task('bprelude')]));
   const busyAt = Date.now() - 3000;
   b.session('cmd-under-screen', { status: 'busy', statusUpdatedAt: busyAt }, [prompt(T0), said(T0 + 1000), prompt(busyAt - 100, '<command-message>review</command-message>')]);
@@ -99,7 +99,7 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   await check('a screen open when the server starts: your turn', () => assert.equal(st('screen-idle').state, 'your-turn'));
   await check('idle with a background shell: your turn', () => assert.equal(st('shell').state, 'your-turn'));
   await check('busy with a call that started no process for a minute: working, no guess', () => assert.equal(st('busy-old-call').state, 'working'));
-  await check('a Claude Code that writes no status: the timing guess still shows', () => needsYou('no-status', /make deploy/));
+  await check('a Claude Code that writes no status: the timing guess names the call', () => needsYou('no-status', /make deploy/));
   await check('a question: needs you with its text', () => needsYou('ask', /Which one/));
   await check("an agent's lone open call: the agent shows the permission", () => {
     const a1 = view('agent').agents.find((a) => a.id === 'a1');
@@ -113,7 +113,7 @@ test('the board reads each session from Claude Code status, on the /proc path', 
     const rows = snap.attention.filter((a) => a.level === 'needs').map((a) => a.session).sort();
     assert.deepEqual(rows, ['agent', 'agent', 'answer', 'ask', 'bg-wait', 'hook', 'late', 'lone', 'no-status', 'no-version', 'old-flight', 'old-beta', 'old-version', 'one-word', 'sandbox', 'same-head', 'stop-late', 'stopped-agent', 'twin', 'two', 'two-shells', 'stolen', 'quote-tail', 'prelude'].sort());
   });
-  await check('header count', () => assert.equal(snap.totals.needsYou, 23));
+  await check('the header counts each session that needs you once', () => assert.equal(snap.totals.needsYou, 23));
   await check('a waiting call beside a running one that is its command and a quote more: names the waiting one', () => needsYou('quote-tail', /echo hi$|Say hi/));
   await check("a waiting call beside a running one whose shell evals Claude Code's prelude first: names the waiting one", () => needsYou('prelude', /git push$|Push/));
   await check('two open calls, one written after the prompt: names neither', () => needsYou('late', ALONE));
@@ -121,17 +121,17 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   await check("a waiting call beside another call's running shell: names the waiting one", () => needsYou('two-shells', /make waiting|Wait here/));
   await check('a waiting call beside a running one that reads the same up to its first quote: names the waiting one', () => needsYou('same-head', /Find alpha|alpha/));
   await check('a screen open over a call left by an earlier process: your turn', () => assert.equal(st('dangling-screen').state, 'your-turn'));
-  await check('an older version with a suffix: the timing guess still shows', () => assert.equal(st('old-beta').state, 'needs-you'));
+  await check('an older version with a suffix: needs you by the timing guess', () => assert.equal(st('old-beta').state, 'needs-you'));
   await check('an agent and the session each with an open call: names neither', () => needsYou('stop-late', ALONE));
   await check('a sandbox request: needs you, names no call', () => needsYou('sandbox', ALONE));
   await check('a background command waiting for approval: named', () => needsYou('bg-wait', /make serve|Serve it/));
   await check('a prompt that starts long after the only open call: names no call', () => needsYou('old-flight', ALONE));
-  await check('a status with no readable version: the timing guess still shows', () => needsYou('no-version', /make nover/));
+  await check('a status with no readable version: the timing guess names the call', () => needsYou('no-version', /make nover/));
   await check('a screen open when the server starts, over a prompt sent after the last turn ended: working', () => assert.equal(st('prompt-after-end-screen').state, 'working'));
-  await check('a version not known to write waiting: the timing guess still shows', () => needsYou('old-version', /make old/));
+  await check('a version not known to write waiting: the timing guess names the call', () => needsYou('old-version', /make old/));
   await check('two calls with the same command, one running: names neither', () => needsYou('twin', ALONE));
   await check('a waiting call beside a running one-word command: names the waiting one', () => needsYou('one-word', /make word-wait|Word wait/));
-  await check('a hook process beside the waiting call: the call is still named', () => needsYou('hook', /make hooked|Hooked/));
+  await check('a hook process beside the waiting call: the call is named', () => needsYou('hook', /make hooked|Hooked/));
   await check('the calls before the part of a long transcript read first: each in the history once', async () => {
     const rows = (await b.history()).filter((r) => r[1] === b.sessions['long-history'].sid);
     assert.deepEqual(rows.map((r) => r[7]).sort(), writes.map((f) => 'Writing ' + f).sort());
@@ -163,15 +163,15 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   await check('background shells the transcript does not name: each shows its own command', () => {
     assert.deepEqual((view('unknown-bg').shells || []).map((x) => x.desc).sort(), ["$ build --tag 'v1' < /dev/null", '$ deploy']);
   });
-  await check('a screen opened while working: still working', () => assert.equal(st('screen-busy').state, 'working'));
-  await check("a screen opened while a command's turn starts: still working", () => assert.equal(st('cmd-under-screen').state, 'working'));
+  await check('a screen opened while working: stays working', () => assert.equal(st('screen-busy').state, 'working'));
+  await check("a screen opened while a command's turn starts: stays working", () => assert.equal(st('cmd-under-screen').state, 'working'));
   await check('a prompt and a screen between two polls: working', () => assert.equal(st('prompt-under-screen').state, 'working'));
   await check("a stopped agent's open call is not the one the prompt waits for", () => needsYou('stopped-agent', /make check|Check it/));
   await check('a turn that ends while a screen is open: your turn', () => assert.equal(st('screen-turn-ends').state, 'your-turn'));
   await check('a prompt sent as the turn under a screen ends: working', () => assert.equal(st('queued-under-screen').state, 'working'));
   await check('a turn started by a task notification between two polls: your turn from its end', () => assert.deepEqual([view('notify-turn').state, view('notify-turn').since], ['your-turn', turnAt]));
   await check('a turn that starts and ends between two polls: your turn from its end', () => assert.deepEqual([view('fast-turn').state, view('fast-turn').since], ['your-turn', turnAt]));
-  await check('a session restarted in a new process: your turn from the new status', () => {
+  await check("a session restarted in another process: your turn from that process's status", () => {
     assert.notEqual(restartWas, turnAt);
     assert.deepEqual([view('restart').state, view('restart').since], ['your-turn', turnAt]);
   });
@@ -192,7 +192,7 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   snap = await b.polls(2);
 
   await check('prompt answered: working', () => assert.equal(st('lone').state, 'working'));
-  await check("that running call, once its shell is past the wait for a background shell's task: still not named, no background row", () => {
+  await check('a running call whose shell lost its pairing, once past the wait for a background task: not named, no background row', () => {
     needsYou('stolen', ALONE);
     assert.deepEqual(view('stolen').shells || [], []);
   });
@@ -212,5 +212,5 @@ test('the board reads each session from Claude Code status, on the /proc path', 
     assert.ok(list.some((x) => x.startsWith('stopped')), JSON.stringify(list));
     for (const x of list) if (x.startsWith('stopped')) assert.match(x, /Stop late|make late-stop/);
   });
-  await check('server errors', () => assert.equal(b.errors.trim(), ''));
+  await check('the server writes nothing to stderr', () => assert.equal(b.errors.trim(), ''));
 });

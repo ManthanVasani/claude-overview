@@ -6,13 +6,13 @@ const { claudeQuote, cmdKey, evalCommand } = require('../lib/shell-line');
 const real = require('./fixtures/tool-shell-lines.json');
 const { quote, SCRUB, toolShellLine } = require('./helpers/claude-code');
 
-test('the command in tool shell lines Claude Code wrote', () => {
+test('reads the command from tool shell lines Claude Code wrote', () => {
   for (const { argv, command } of real.lines) assert.equal(evalCommand(argv.join(' ') + ' '), command);
 });
 
 const CASES = [
-  ['one word, background', toolShellLine('make < /dev/null'), 'make'],
-  ['one word, foreground', toolShellLine('pytest'), 'pytest'],
+  ['one word, with < /dev/null', toolShellLine('make < /dev/null'), 'make'],
+  ['one word, no redirect', toolShellLine('pytest'), 'pytest'],
   ['a quote and a < of its own', toolShellLine(quote("build --tag 'v1' < notes.txt")), "build --tag 'v1' < notes.txt"],
   ['several lines', toolShellLine(quote('echo a\necho b')), 'echo a\necho b'],
   ['a command that runs eval itself', toolShellLine(quote('eval "$(ssh-agent)"')), 'eval "$(ssh-agent)"'],
@@ -25,7 +25,7 @@ const CASES = [
 ];
 
 for (const [name, line, want] of CASES) {
-  test('the command: ' + name, () => assert.equal(evalCommand(line), want));
+  test('reads the command: ' + name, () => assert.equal(evalCommand(line), want));
 }
 
 test("a shell running echo hi'there' is not the call echo hi", () => {

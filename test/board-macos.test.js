@@ -6,11 +6,11 @@ const test = require('node:test');
 const { Board, runningToolShell } = require('./helpers/board');
 const { prompt, call, said, result, PERMISSION, quote } = require('./helpers/claude-code');
 
-// the board's ps path calls lsof, and on Linux its ps is a stand-in that reads /proc
-const runnable = process.platform === 'darwin' || (process.platform === 'linux' && !cp.spawnSync('lsof', ['-v']).error);
+// the board's ps path calls lsof, and on Linux its ps is a stand-in that reads procps ps and /proc
+const runnable = process.platform === 'darwin' || (process.platform === 'linux' && !cp.spawnSync('lsof', ['-v']).error && cp.spawnSync('/usr/bin/ps', ['-o', 'lstart=', '-p', String(process.pid)]).status === 0);
 
-test('the board on the macOS process path, where ps prints each command through strvis', { skip: !runnable && !process.env.CI && 'needs lsof' }, async (t) => {
-  assert.ok(runnable, 'needs lsof');
+test('the board on the macOS process path, where ps prints each command through strvis', { skip: !runnable && process.env.CI !== 'true' && 'needs lsof, and on Linux procps ps' }, async (t) => {
+  assert.ok(runnable, 'needs lsof, and on Linux procps ps');
   const t0 = Date.now();
   const b = new Board('board-macos-', { startedAt: t0 - 8000, statusUpdatedAt: t0 });
   t.after(() => b.stop());
@@ -59,11 +59,11 @@ test('the board on the macOS process path, where ps prints each command through 
   await check('a waiting call beside a running two-line command: names the waiting one', () => namesWaiting('beside-newline'));
   await check('a waiting call beside a running command with a tab: names the waiting one', () => namesWaiting('beside-tab'));
   await check('a waiting call beside a running command with non-ASCII text: names the waiting one', () => namesWaiting('beside-utf8'));
-  for (const key of ['beside-c-cedilla', 'beside-kana', 'beside-typed-m']) {
-    await check('a waiting call beside a running command (' + key + '): names the waiting one', () => namesWaiting(key));
+  for (const [key, what] of [['beside-c-cedilla', 'a c with a cedilla, which ps prints with a quote'], ['beside-kana', 'a kana character, which ps prints with a quote'], ['beside-typed-m', 'a typed M-, as ps prints a high byte']]) {
+    await check('a waiting call beside a running command with ' + what + ': names the waiting one', () => namesWaiting(key));
   }
   await check('a waiting call whose text is the running one as ps prints it: names neither', () => assert.deepEqual([view('lookalike').state, view('lookalike').act], ['needs-you', 'Waiting for your permission']));
   await check('a Monitor whose key cut falls inside an emoji: running', () => assert.deepEqual(view('monitor-cut-emoji').shells.map((x) => x.state), ['running']));
   await check('a Monitor with non-ASCII text before its first quote: running', () => assert.deepEqual(view('monitor-utf8').shells.map((x) => x.state), ['running']));
-  await check('server errors', () => assert.equal(b.errors.trim(), ''));
+  await check('the server writes nothing to stderr', () => assert.equal(b.errors.trim(), ''));
 });
