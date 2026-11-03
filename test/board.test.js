@@ -215,7 +215,7 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   await check('the server writes nothing to stderr', () => assert.equal(b.errors.trim(), ''));
 });
 
-test('transcripts the board cannot read leave their sessions and the others on the board', { timeout: SERVER_TEST_MS, skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
+test('the board keeps sessions whose transcripts it cannot read, and leaves off only a session it fails on', { timeout: SERVER_TEST_MS, skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
   const T0 = Date.now() - 60000;
   const b = new Board('unreadable-', { startedAt: T0 - 5000 });
   t.after(() => b.stop());
@@ -224,7 +224,7 @@ test('transcripts the board cannot read leave their sessions and the others on t
   // a directory opens and then fails to read, as a file on a failing disk would
   fs.mkdirSync(agentMeta.replace('h1.meta.json', 'd1.jsonl'));
   b.session('unreadable', PERMISSION, [prompt(T0), said(T0 + 1000, 'Hidden')]);
-  // a status file the board does not expect, as a later Claude Code could write
+  // a status file the board fails on, as a later Claude Code could write
   b.session('odd', { sessionId: 4242, name: '' }, [prompt(T0)]);
   const files = [b.transcript('unreadable'), agentMeta.replace(/\.meta\.json$/, '.jsonl')];
   // the status files stay readable and the transcripts do not, as after a sudo claude that kept HOME
@@ -241,7 +241,7 @@ test('transcripts the board cannot read leave their sessions and the others on t
     assert.equal(b.view(snap, 'unreadable').state, 'needs-you');
     assert.equal(b.view(snap, 'unreadable').said, null);
   });
-  await t.test('a session the board fails on is left off, and the others stay', () => {
+  await t.test('a session the board fails on is left off and its error logged', () => {
     assert.equal(snap.sessions.find((v) => v.id === 4242), undefined);
     assert.match(b.errors, /TypeError/);
   });
