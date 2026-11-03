@@ -12,6 +12,9 @@ const { version } = require('../package.json');
 const ROOT = path.join(__dirname, '..');
 
 test('the published package runs on its own files', async (t) => {
+  // hooks run in the order they are added, and the server must stop before its files go
+  const b = new Board('packed-');
+  t.after(() => b.stop());
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pack-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const pack = cp.spawnSync('npm', ['pack', '--json', '--pack-destination', dir], { cwd: ROOT, encoding: 'utf8' });
@@ -27,8 +30,6 @@ test('the published package runs on its own files', async (t) => {
   const v = cp.spawnSync(process.execPath, [server, '--version'], { encoding: 'utf8' });
   assert.equal(v.stdout.trim(), version);
 
-  const b = new Board('packed-');
-  t.after(() => b.stop());
   await b.start({ server });
   for (const p of ['/', '/map.js', '/live.js', '/usage-ui.js', '/alerts.js', '/vendor/d3.min.js', '/state.json', '/usage']) {
     assert.equal((await b.get(p)).status, 200, p);

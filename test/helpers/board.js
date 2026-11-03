@@ -106,29 +106,45 @@ class Board {
     return metaFile;
   }
 
+  // another test file's server can take the port before this one listens, so only this server's own line counts
   async start(opts) {
     opts = opts || {};
-    this.port = await freePort();
-    const env = Object.assign({}, process.env, {
-      HOME: this.dir,
-      CLAUDE_CONFIG_DIR: this.claude,
-      CLAUDE_OVERVIEW_PORT: String(this.port),
-      XDG_STATE_HOME: path.join(this.dir, 'state'),
-      XDG_DATA_HOME: path.join(this.dir, 'data'),
-      XDG_CACHE_HOME: path.join(this.dir, 'cache'),
+    for (let tries = 1; ; tries++) {
+      this.port = await freePort();
+      const env = Object.assign({}, process.env, {
+        HOME: this.dir,
+        CLAUDE_CONFIG_DIR: this.claude,
+        CLAUDE_OVERVIEW_PORT: String(this.port),
+        XDG_STATE_HOME: path.join(this.dir, 'state'),
+        XDG_DATA_HOME: path.join(this.dir, 'data'),
+        XDG_CACHE_HOME: path.join(this.dir, 'cache'),
+      });
+      const args = [opts.server || path.join(ROOT, 'server.js')];
+      if (opts.macOS && process.platform !== 'darwin') {
+        args.unshift('-r', path.join(__dirname, 'darwin.js'));
+        // the stand-in runs on the first node on PATH
+        env.PATH = [path.join(__dirname, 'fake-ps'), path.dirname(process.execPath), env.PATH].join(path.delimiter);
+      }
+      this.errors = '';
+      this.server = cp.spawn(process.execPath, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
+      this.server.stderr.on('data', (b) => { this.errors += b; });
+      if (await this.listening()) return this.state();
+      this.server.kill();
+      if (tries === 3) throw new Error('the server did not start: ' + this.errors);
+    }
+  }
+
+  listening() {
+    const line = 'Claude overview on http://127.0.0.1:' + this.port + '/';
+    return new Promise((resolve) => {
+      let out = '';
+      const timer = setTimeout(() => resolve(false), 20000);
+      this.server.stdout.on('data', (b) => {
+        out += b;
+        if (out.includes(line)) { clearTimeout(timer); resolve(true); }
+      });
+      this.server.once('exit', () => { clearTimeout(timer); resolve(false); });
     });
-    const args = [opts.server || path.join(ROOT, 'server.js')];
-    if (opts.macOS && process.platform !== 'darwin') {
-      args.unshift('-r', path.join(__dirname, 'darwin.js'));
-      env.PATH = path.join(__dirname, 'fake-ps') + path.delimiter + env.PATH;
-    }
-    this.server = cp.spawn(process.execPath, args, { env, stdio: ['ignore', 'ignore', 'pipe'] });
-    this.server.stderr.on('data', (b) => { this.errors += b; });
-    for (let i = 0; i < 100; i++) {
-      await sleep(200);
-      try { return await this.state(); } catch { /* starting */ }
-    }
-    throw new Error('the server did not start: ' + this.errors);
   }
 
   get(pathname) {

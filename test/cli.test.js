@@ -11,7 +11,10 @@ const LIB = path.join(__dirname, '..', 'lib') + path.sep;
 const run = (args, env) => cp.spawnSync(process.execPath, [SERVER, ...args], { encoding: 'utf8', timeout: 10000, env: Object.assign({}, process.env, env) });
 
 test('--version and -v print the version', () => {
-  for (const a of ['--version', '-v']) assert.deepEqual([run([a]).status, run([a]).stdout.trim()], [0, version]);
+  for (const a of ['--version', '-v']) {
+    const r = run([a]);
+    assert.deepEqual([r.status, r.stdout.trim()], [0, version]);
+  }
 });
 
 test('--help and -h print the usage with the port', () => {

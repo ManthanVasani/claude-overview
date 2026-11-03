@@ -74,7 +74,7 @@ claude-overview
 ```
 
 Next time, run `claude-overview`. To update it, run `npm install -g claude-overview@latest`, then stop it with
-Ctrl + C and start it again: until then the copy already running cannot find its page.
+Ctrl + C and start it again, so the new version runs.
 
 ### Keep it running in the background
 

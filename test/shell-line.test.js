@@ -5,6 +5,7 @@ const test = require('node:test');
 const { claudeQuote, cmdKey, evalCommand } = require('../lib/shell-line');
 const real = require('./fixtures/tool-shell-lines.json');
 const { quote, SCRUB, toolShellLine } = require('./helpers/claude-code');
+const { rng } = require('./helpers/rng');
 
 test('reads the command from tool shell lines Claude Code wrote', () => {
   for (const { argv, command } of real.lines) assert.equal(evalCommand(argv.join(' ') + ' '), command);
@@ -44,11 +45,10 @@ test('a line that is not a tool shell has no command', () => {
 
 test('every command Claude Code quotes reads back as itself', () => {
   const pieces = ['echo ', 'grep ', "'", '"', '\\', ' ', '\t', '\n', 'M-', '^', 'ç', 'で', '§', '😀', '\\012', 'x', '$HOME', '<', '|', 'a b', ' eval ', ' && pwd -P >| '];
-  let seed = 11;
-  const r = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const r = rng(11);
   for (let k = 0; k < 20000; k++) {
     let cmd = 'x';
-    for (let n = Math.floor(r() * 8); n >= 0; n--) cmd += pieces[Math.floor(r() * pieces.length)];
+    for (let n = Math.floor(r() * 8); n >= 0; n--) cmd += r.pick(pieces);
     const line = toolShellLine(claudeQuote(cmd) + (cmd.includes('<') ? '' : ' < /dev/null'));
     assert.equal(evalCommand(line), cmd, JSON.stringify(cmd));
   }

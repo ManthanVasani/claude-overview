@@ -7,7 +7,8 @@ const test = require('node:test');
 const { PROC_FS } = require('../lib/config');
 const { psText } = require('../lib/procs');
 const { appleVis } = require('./helpers/apple-vis');
-const { rng, takesFor } = require('./helpers/foreground-cases');
+const { takesFor } = require('./helpers/foreground-cases');
+const { rng } = require('./helpers/rng');
 const { buildOracle } = require('./helpers/strvis');
 const table = require('./fixtures/strvis.json');
 

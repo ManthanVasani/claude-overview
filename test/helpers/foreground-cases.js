@@ -8,17 +8,11 @@ const { newSession, waitedOn } = require('../../lib/sessions');
 const { matchForeground } = require('../../lib/shells');
 const { appleVis } = require('./apple-vis');
 const { call, PERMISSION, quote, toolShellArgv, toolShellLine } = require('./claude-code');
+const { rng } = require('./rng');
 
 const T = 1000000;
 const NOW = T + 40000;
 const CMDS = ["printf 'a\tb'", 'echo café', 'echo ç', 'make one\nmake two', 'make one\\012make two', 'npm test', 'make', 'git status', 'pytest', "git commit -m \"$(cat <<'EOF'\nmsg\nEOF\n)\"", 'ls -la', "grep 'M-' notes.txt", "echo 'で'"];
-
-function rng(seed) {
-  let x = seed;
-  const r = () => (x = (x * 1103515245 + 12345) % 2147483648) / 2147483648;
-  r.pick = (a) => a[Math.floor(r() * a.length)];
-  return r;
-}
 
 function toolShell(cmd, mac, devNull) {
   const afterEval = quote(cmd) + (devNull && !cmd.includes('<') ? ' < /dev/null' : '');
@@ -106,4 +100,4 @@ function suite(mac) {
   });
 }
 
-module.exports = { rng, takesFor, suite };
+module.exports = { takesFor, suite };
