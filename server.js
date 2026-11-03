@@ -1053,9 +1053,8 @@ function matchForeground(S, now) {
 function evalCommand(line) {
   for (let at = line ? line.indexOf(' eval ') : -1; at >= 0; at = line.indexOf(' eval ', at + 1)) {
     const w = shellWord(line, at + 6);
-    if (!w) continue;
-    const end = line.startsWith(' < /dev/null', w.end) ? w.end + 12 : w.end;
-    if (w.cmd && line.startsWith(' && pwd -P >| ', end)) return w.cmd;
+    // older Claude Code wrote the redirect as \<
+    if (w && w.cmd && /^(?: \\?< \/dev\/null)? && pwd -P >\| /.test(line.slice(w.end, w.end + 30))) return w.cmd;
   }
   return null;
 }
