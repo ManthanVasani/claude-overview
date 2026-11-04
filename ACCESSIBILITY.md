@@ -54,10 +54,12 @@ contrast theme or person using assistive technology has tried it yet.
 - The timeline can only be used with a mouse or touch: a keyboard cannot open a call from it, show a session's agents
   or move back in time. Moving back in time needs a drag or a scroll wheel, and its height can only be changed by
   dragging. Its buttons work from the keyboard, and T folds it.
+- A card's details come after every other control in the Tab order, so after they are opened with a mouse, Tab
+  reaches their Close button last. Esc still closes them.
 - Focus on a row in Touching is lost each time that list redraws, which can be every second. When details opened
   from that list close, focus goes back to the row only for a moment.
-- In the 0.3.2 release on npm, opening a card's details does not move focus to them, their Close button comes after
-  every other control in the Tab order, and while a session is busy, focus inside them is lost each time they refresh.
+- In the 0.3.2 release on npm, opening a card's details does not move focus to them, and while a session is busy,
+  focus inside them is lost each time they refresh.
 - These rows open another item with a mouse only: Started by, the child agents, Touched most, Who touched it and Every
   touch in a card's details, and Top sessions in Usage.
 - The New session and Session died notices that pop up disappear after 8 seconds, cannot be focused, and open their

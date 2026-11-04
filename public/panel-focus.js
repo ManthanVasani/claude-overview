@@ -37,17 +37,22 @@
     };
   }
 
-  window.OVPanelFocus = function (panel) {
+  window.OVPanelFocus = function (panel, board) {
     let opener = null;
+    let moved = false;
     const holds = () => panel.contains(document.activeElement);
     function take() {
       const x = panel.querySelector('[data-close]');
       if (x) x.focus({ preventScroll: true });
     }
-    // a held key repeats on Close once focus moves there
-    panel.addEventListener('keydown', (e) => {
-      if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault();
-    });
+    // a held key repeats on wherever focus moved: Close, or the card or row that reopens the panel
+    document.addEventListener('keydown', (e) => {
+      if (!e.repeat) moved = false;
+      else if (moved && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, true);
     return {
       redraw(html) {
         const held = holds();
@@ -65,14 +70,19 @@
         // Close sits at the top
         panel.scrollTop = 0;
         take();
+        moved = true;
       },
       // its result runs after the panel hides, as a narrow window hides the alerts beside it
       closing(card) {
+        const from = opener;
+        opener = null;
         if (!byKeyboard() || !holds()) return () => {};
         return () => {
-          for (const el of [opener && opener(), card]) {
+          moved = true;
+          for (const el of [from && from(), card]) {
             if (!el) continue;
-            el.focus({ preventScroll: true });
+            // the board pans by transform, so focus must not scroll it
+            el.focus({ preventScroll: board.contains(el) });
             if (document.activeElement === el) return;
           }
           if (holds()) document.activeElement.blur();

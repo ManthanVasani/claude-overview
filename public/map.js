@@ -33,7 +33,7 @@
   const viewport = $('viewport');
   const world = $('world');
   const panel = $('panel');
-  const panelFocus = window.OVPanelFocus(panel);
+  const panelFocus = window.OVPanelFocus(panel, viewport);
   const alertsEl = $('alerts');
   const hudText = $('hud-text');
   const mark = $('mark');

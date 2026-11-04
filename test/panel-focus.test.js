@@ -59,7 +59,9 @@ class El {
   focusable() { return this.nodeName === 'BUTTON' || this.hasAttribute('tabindex') || (this.nodeName === 'A' && this.hasAttribute('href')); }
   get shown() { for (let n = this; n; n = n.parentNode) if (n.hasAttribute('hidden')) return false; return true; }
   focus(opts) {
-    assert.equal(opts && opts.preventScroll, true);
+    const still = !!(opts && opts.preventScroll);
+    if (this.page.panel.contains(this) || this.page.board.contains(this)) assert.equal(still, true);
+    this.page.scrolls = !still;
     if (this.focusable() && this.isConnected && this.shown) this.page.active = this;
   }
   blur() { if (this.page.active === this) this.page.active = this.page.body; }
@@ -91,8 +93,12 @@ function makePage() {
   page.body = new El(page, 'BODY');
   page.active = page.body;
   const panel = page.body.appendChild(new El(page, 'ASIDE', { id: 'panel' }));
+  const board = page.body.appendChild(new El(page, 'DIV', { id: 'viewport' }));
+  Object.assign(page, { panel, board });
   const document = {
     body: page.body,
+    listeners: {},
+    addEventListener(type, fn, capture) { assert.equal(capture, true); this.listeners[type] = fn; },
     get activeElement() { return page.active; },
     createElement() {
       const content = new El(page, '#fragment');
@@ -101,7 +107,7 @@ function makePage() {
   };
   const window = {};
   vm.runInNewContext(fs.readFileSync(path.join(PUBLIC, 'panel-focus.js'), 'utf8'), { window, document });
-  const card = page.body.appendChild(new El(page, 'DIV', { tabindex: '0' }));
+  const card = board.appendChild(new El(page, 'DIV', { tabindex: '0' }));
   const button = page.body.appendChild(new El(page, 'BUTTON'));
   const list = page.body.appendChild(new El(page, 'SECTION', { id: 'touch' }));
   const rows = list.appendChild(new El(page, 'UL'));
@@ -110,7 +116,15 @@ function makePage() {
     for (const k of keys) rows.appendChild(new El(page, 'LI', { 'data-key': k, tabindex: '0' }));
     return rows.childNodes;
   };
-  return { page, panel, window, card, button, list, draw, focus: window.OVPanelFocus(panel) };
+  // the module hears a key press before the page does
+  const press = (key, repeat) => {
+    let prevented = false;
+    let stopped = false;
+    document.listeners.keydown({ key, repeat, preventDefault() { prevented = true; }, stopPropagation() { stopped = true; } });
+    assert.equal(prevented, stopped);
+    return stopped;
+  };
+  return { page, panel, window, card, button, list, draw, press, focus: window.OVPanelFocus(panel, board) };
 }
 
 const KEY = { type: 'keydown', preventDefault() {} };
@@ -198,7 +212,7 @@ test('only a key press moves focus to the Close button when the panel opens', ()
 });
 
 test('a key press that opens the panel goes no further, so it cannot press the Close button', () => {
-  for (const [event, stops] of [[{ type: 'keydown' }, true], [KEY_CLICK, false]]) {
+  for (const [event, stops] of [[{ type: 'keydown' }, true], [{ ...KEY_CLICK }, false]]) {
     let stopped = false;
     event.preventDefault = () => { stopped = true; };
     const t = makePage();
@@ -261,14 +275,51 @@ test('closing with nowhere to go takes focus off the hidden panel', () => {
   assert.equal(t.page.active, t.page.body);
 });
 
-test('a key held down after the panel opens does not press Close', () => {
+test('a key held down after it moves focus neither presses Close nor reopens the panel', () => {
   const t = makePage();
-  for (const [e, stops] of [[{ key: 'Enter', repeat: true }, true], [{ key: ' ', repeat: true }, true], [{ key: 'Enter', repeat: false }, false], [{ key: 'a', repeat: true }, false]]) {
-    let stopped = false;
-    e.preventDefault = () => { stopped = true; };
-    t.panel.listeners.keydown(e);
-    assert.equal(stopped, stops, JSON.stringify(e));
+  assert.equal(t.press('Enter', false), false);
+  openFrom(t, t.card, KEY);
+  assert.equal(t.press('Enter', true), true);
+  assert.equal(t.press(' ', true), true);
+  assert.equal(t.press('a', true), false);
+  assert.equal(t.press('Enter', false), false);
+  assert.equal(t.press('Enter', true), false);
+
+  t.window.event = KEY_CLICK;
+  t.focus.closing(t.card)();
+  assert.equal(t.page.active, t.card);
+  assert.equal(t.press('Enter', true), true);
+
+  t.press('Enter', false);
+  openFrom(t, t.card, MOUSE);
+  assert.equal(t.press('Enter', true), false);
+  closeOf(t.panel).focus({ preventScroll: true });
+  t.focus.closing(t.card)();
+  assert.equal(t.press('Enter', true), false);
+});
+
+test('focus going back to a row may scroll its list into view, but going back to a card never scrolls the board', () => {
+  for (const [opener, scrolls] of [['row', true], ['card', false]]) {
+    const t = makePage();
+    const el = opener === 'row' ? t.draw(['a'])[0] : t.card;
+    openFrom(t, el, KEY);
+    assert.equal(t.page.scrolls, false);
+    t.focus.closing(t.card)();
+    assert.equal(t.page.active, el);
+    assert.equal(t.page.scrolls, scrolls, opener);
   }
+});
+
+test('closing forgets the opener, so a later open from inside the panel does not send focus back to it', () => {
+  const t = makePage();
+  openFrom(t, t.draw(['a'])[0], KEY);
+  t.window.event = MOUSE;
+  t.focus.closing(t.card)();
+  assert.equal(t.page.active, closeOf(t.panel));
+  t.window.event = KEY;
+  t.focus.opened();
+  t.focus.closing(t.card)();
+  assert.equal(t.page.active, t.card);
 });
 
 test('a keyboard open shows the top of the panel, where Close is', () => {
@@ -339,6 +390,7 @@ test('the page loads panel-focus.js first, draws the panel only through it, name
   const map = fs.readFileSync(path.join(PUBLIC, 'map.js'), 'utf8');
   const page = fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8');
   assert.doesNotMatch(map, /panel\.innerHTML/);
+  assert.match(map, /const panelFocus = window\.OVPanelFocus\(panel, viewport\);/);
   assert.match(map, /if \(panel\.html !== html\) \{\s+const top = panel\.scrollTop;\s+panelFocus\.redraw\(html\);/);
   assert.match(map, /function openPanel\(id\) \{[^}]*?renderPanel\(\);\s+panelFocus\.opened\(\);/);
   assert.match(map, /function closePanel\(\) \{\s+const refocus = panelFocus\.closing\(nodeEls\.get\(selected\)\);\s+selected = null;[^}]*?OVUsage\.onSelect\(\);\s+refocus\(\);\s+\}/);
