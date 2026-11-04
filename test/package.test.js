@@ -31,7 +31,7 @@ test('the published package runs on its own files', { timeout: SERVER_TEST_MS },
   assert.equal(v.stdout.trim(), version);
 
   await b.start({ server });
-  for (const p of ['/', '/map.js', '/live.js', '/usage-ui.js', '/alerts.js', '/vendor/d3.min.js', '/state.json', '/usage']) {
+  for (const p of ['/', '/panel-focus.js', '/map.js', '/live.js', '/usage-ui.js', '/alerts.js', '/vendor/d3.min.js', '/state.json', '/usage']) {
     assert.equal((await b.get(p)).status, 200, p);
   }
   assert.equal(b.errors, '');

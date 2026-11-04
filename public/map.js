@@ -33,6 +33,7 @@
   const viewport = $('viewport');
   const world = $('world');
   const panel = $('panel');
+  const panelFocus = window.OVPanelFocus(panel);
   const alertsEl = $('alerts');
   const hudText = $('hud-text');
   const mark = $('mark');
@@ -1549,7 +1550,7 @@
     else html = panelHtml(n);
     if (panel.html !== html) {
       const top = panel.scrollTop;
-      panel.innerHTML = html;
+      panelFocus.redraw(html);
       panel.html = html;
       panel.scrollTop = top;
     }
@@ -1566,12 +1567,14 @@
     if (el) el.classList.add('sel');
     panel.html = null;
     renderPanel();
+    panelFocus.opened();
     clampView();
     applyView(true);
     if (window.OVLive) window.OVLive.onSelect();
     if (window.OVUsage) window.OVUsage.onSelect();
   }
   function closePanel() {
+    const refocus = panelFocus.closing(nodeEls.get(selected));
     selected = null;
     restoreOpen = null;
     store(OPEN_KEY, '');
@@ -1582,6 +1585,7 @@
     applyView(true);
     if (window.OVLive) window.OVLive.onSelect();
     if (window.OVUsage) window.OVUsage.onSelect();
+    refocus();
   }
   panel.addEventListener('click', (e) => {
     if (e.target.closest('[data-close]')) { closePanel(); return; }
