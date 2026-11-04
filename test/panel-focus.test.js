@@ -170,28 +170,34 @@ test('focus stays on the same control when a redraw changes what is around it', 
   focus.redraw(HTML);
   const link = linkOf(panel);
   link.focus({ preventScroll: true });
-  focus.redraw(HTML.replace('Reading a file', 'Writing a file').replace('Agent', 'Workflow').replace('/pr/1', '/pr/2'));
+  panel.scrollTop = 300;
+  assert.equal(focus.redraw(HTML.replace('Reading a file', 'Writing a file').replace('Agent', 'Workflow').replace('/pr/1', '/pr/2')), false);
+  assert.equal(panel.scrollTop, 300);
   assert.equal(page.active, link);
   assert.equal(linkOf(panel), link);
   assert.equal(link.getAttribute('href'), '/pr/2');
 });
 
-test('focus whose control a redraw removes goes to the Close button, not to the page', () => {
-  const { page, panel, focus } = makePage();
+test('focus whose control a redraw removes goes to the Close button, scrolled into view, not to the page', () => {
+  const { page, panel, focus, press } = makePage();
   focus.redraw(HTML);
   linkOf(panel).focus({ preventScroll: true });
-  focus.redraw(HTML.replace('<a href="/pr/1">PR</a>', '<p>No pull request</p>'));
+  panel.scrollTop = 300;
+  assert.equal(focus.redraw(HTML.replace('<a href="/pr/1">PR</a>', '<p>No pull request</p>')), true);
   assert.equal(page.active, closeOf(panel));
+  assert.equal(panel.scrollTop, 0);
+  // a key held on the removed control must not go on to press Close
+  assert.equal(press('Enter', true), true);
 });
 
 test('a redraw leaves focus alone when it is outside the panel', () => {
   const { page, card, focus } = makePage();
   focus.redraw(HTML);
   card.focus({ preventScroll: true });
-  focus.redraw('<button data-close>x</button><p>This item is no longer on the map.</p>');
+  assert.equal(focus.redraw('<button data-close>x</button><p>This item is no longer on the map.</p>'), false);
   assert.equal(page.active, card);
   page.active = page.body;
-  focus.redraw(HTML);
+  assert.equal(focus.redraw(HTML), false);
   assert.equal(page.active, page.body);
 });
 
@@ -386,12 +392,12 @@ test('a mouse open forgets an earlier opener', () => {
   assert.equal(t.page.active, t.card);
 });
 
-test('the page loads panel-focus.js first, draws the panel only through it, names the panel and rings Close', () => {
+test('the page loads panel-focus.js first, draws the panel through it when it loads, names the panel and rings Close', () => {
   const map = fs.readFileSync(path.join(PUBLIC, 'map.js'), 'utf8');
   const page = fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8');
-  assert.doesNotMatch(map, /panel\.innerHTML/);
-  assert.match(map, /const panelFocus = window\.OVPanelFocus\(panel, viewport\);/);
-  assert.match(map, /if \(panel\.html !== html\) \{\s+const top = panel\.scrollTop;\s+panelFocus\.redraw\(html\);/);
+  assert.equal((map.match(/panel\.innerHTML/g) || []).length, 1);
+  assert.match(map, /const panelFocus = window\.OVPanelFocus \? window\.OVPanelFocus\(panel, viewport\) : \{ redraw\(h\) \{ panel\.innerHTML = h; \}, opened\(\) \{\}, closing\(\) \{ return \(\) => \{\}; \} \};/);
+  assert.match(map, /if \(panel\.html !== html\) \{\s+const top = panel\.scrollTop;\s+const toTop = panelFocus\.redraw\(html\);\s+panel\.html = html;\s+if \(!toTop\) panel\.scrollTop = top;/);
   assert.match(map, /function openPanel\(id\) \{[^}]*?renderPanel\(\);\s+panelFocus\.opened\(\);/);
   assert.match(map, /function closePanel\(\) \{\s+const refocus = panelFocus\.closing\(nodeEls\.get\(selected\)\);\s+selected = null;[^}]*?OVUsage\.onSelect\(\);\s+refocus\(\);\s+\}/);
   assert.ok(page.indexOf('src="/panel-focus.js"') > 0 && page.indexOf('src="/panel-focus.js"') < page.indexOf('src="/map.js"'));

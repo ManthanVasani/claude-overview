@@ -42,8 +42,11 @@
     let moved = false;
     const holds = () => panel.contains(document.activeElement);
     function take() {
+      // Close sits at the top
+      panel.scrollTop = 0;
       const x = panel.querySelector('[data-close]');
       if (x) x.focus({ preventScroll: true });
+      moved = true;
     }
     // a held key repeats on wherever focus moved: Close, or the card or row that reopens the panel
     document.addEventListener('keydown', (e) => {
@@ -59,7 +62,10 @@
         const t = document.createElement('template');
         t.innerHTML = html;
         morph(panel, t.content);
-        if (held && !holds()) take();
+        if (!held || holds()) return false;
+        take();
+        // the caller must not scroll back to where the removed control was
+        return true;
       },
       opened() {
         if (!byKeyboard()) { opener = null; return; }
@@ -67,10 +73,7 @@
         if (window.event.type === 'keydown') window.event.preventDefault();
         const from = document.activeElement;
         if (!panel.contains(from)) opener = from && from !== document.body ? finder(from) : null;
-        // Close sits at the top
-        panel.scrollTop = 0;
         take();
-        moved = true;
       },
       // its result runs after the panel hides, as a narrow window hides the alerts beside it
       closing(card) {

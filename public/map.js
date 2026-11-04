@@ -33,7 +33,8 @@
   const viewport = $('viewport');
   const world = $('world');
   const panel = $('panel');
-  const panelFocus = window.OVPanelFocus(panel, viewport);
+  // a server still running from before an upgrade serves this page but not panel-focus.js
+  const panelFocus = window.OVPanelFocus ? window.OVPanelFocus(panel, viewport) : { redraw(h) { panel.innerHTML = h; }, opened() {}, closing() { return () => {}; } };
   const alertsEl = $('alerts');
   const hudText = $('hud-text');
   const mark = $('mark');
@@ -1550,9 +1551,9 @@
     else html = panelHtml(n);
     if (panel.html !== html) {
       const top = panel.scrollTop;
-      panelFocus.redraw(html);
+      const toTop = panelFocus.redraw(html);
       panel.html = html;
-      panel.scrollTop = top;
+      if (!toTop) panel.scrollTop = top;
     }
     tickIn(panel);
   }
