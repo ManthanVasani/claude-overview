@@ -1553,6 +1553,7 @@
       const top = panel.scrollTop;
       const toTop = panelFocus.redraw(html);
       panel.html = html;
+      panel.setAttribute('aria-label', selected === 'usage' ? 'Usage' : 'Details');
       if (!toTop) panel.scrollTop = top;
     }
     tickIn(panel);

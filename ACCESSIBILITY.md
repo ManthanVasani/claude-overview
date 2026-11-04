@@ -8,9 +8,10 @@ it is.
 The parts of the board named below (cards, the Needs attention list, the Touching list, the live feed, the timeline and
 Usage) are described under [Using it](README.md#using-it) in the README.
 
-It was last checked against version 0.3.2, in November 2026, in headless Chromium on Linux: with scripted key presses,
-the accessibility tree, Lighthouse, contrast ratios computed from the page's colours, a colour-blindness simulation, and
-emulated forced colours and zoom (zoom as the window size it gives). No screen reader, real browser zoom, Windows
+It was last checked in November 2026, against the code after version 0.3.2 (where the 0.3.2 release on npm differs, it
+says so below), in headless Chromium on Linux: with scripted key presses, the accessibility tree, Lighthouse, contrast
+ratios computed from the page's colours, a colour-blindness simulation, and emulated forced colours and zoom (zoom as
+the window size it gives). No screen reader, real browser zoom, Windows
 contrast theme or person using assistive technology has tried it yet.
 
 ## Where it runs
@@ -27,8 +28,8 @@ contrast theme or person using assistive technology has tried it yet.
 - The buttons in the bottom row, the timeline's header, the side column's tabs and the Usage panel are standard
   buttons: Tab reaches them, and Enter or Space presses them. Toggle buttons say whether they are on.
 - Cards take focus in turn, and Enter or Space opens a card's details and moves focus to their Close button. Focus
-  stays there while they refresh, and Esc or Close puts it back on the card or row that opened them, except a row in
-  Touching (see below). Rows in Needs attention, Touching and the live feed open with Enter.
+  stays there while they refresh, and Esc, or Enter on Close, puts it back on the card or row that opened them, except a
+  row in Touching (see below). Rows in Needs attention, Touching and the live feed open with Enter.
 - Most focused controls and cards show a blue outline. The exceptions are listed below.
 - The keys listed under Using it in the README zoom and fit the board, fold the timeline and open Usage. The arrow keys,
   Page Up, Page Down, Home and End move around the board, except while focus is in a card's details or the

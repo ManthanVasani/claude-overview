@@ -46,7 +46,14 @@ class El {
     return h;
   }
   contains(o) { for (let n = o; n; n = n.parentNode) if (n === this) return true; return false; }
-  matches(sel) { const m = /^\[([a-z-]+)\]$/.exec(sel); return m ? this.hasAttribute(m[1]) : this.nodeName === sel.toUpperCase(); }
+  matches(sel) {
+    if (sel === ':focus-visible') {
+      if (this.page.focusVisible === null) throw new SyntaxError('unknown selector');
+      return this.page.active === this && this.page.focusVisible;
+    }
+    const m = /^\[([a-z-]+)\]$/.exec(sel);
+    return m ? this.hasAttribute(m[1]) : this.nodeName === sel.toUpperCase();
+  }
   closest(sel) { for (let n = this; n; n = n.parentNode) if (n.matches(sel)) return n; return null; }
   querySelectorAll(sel) {
     const out = [];
@@ -92,6 +99,8 @@ function makePage() {
   const page = {};
   page.body = new El(page, 'BODY');
   page.active = page.body;
+  // false after a mouse click, null in a browser without :focus-visible
+  page.focusVisible = true;
   const panel = page.body.appendChild(new El(page, 'ASIDE', { id: 'panel' }));
   const board = page.body.appendChild(new El(page, 'DIV', { id: 'viewport' }));
   Object.assign(page, { panel, board });
@@ -171,11 +180,51 @@ test('focus stays on the same control when a redraw changes what is around it', 
   const link = linkOf(panel);
   link.focus({ preventScroll: true });
   panel.scrollTop = 300;
-  assert.equal(focus.redraw(HTML.replace('Reading a file', 'Writing a file').replace('Agent', 'Workflow').replace('/pr/1', '/pr/2')), false);
+  assert.equal(focus.redraw(HTML.replace('Reading a file', 'Writing a file').replace('Agent', 'Workflow')), false);
   assert.equal(panel.scrollTop, 300);
   assert.equal(page.active, link);
   assert.equal(linkOf(panel), link);
-  assert.equal(link.getAttribute('href'), '/pr/2');
+});
+
+test('a control that a redraw turns into another one counts as removed, so Enter cannot open another pull request', () => {
+  const { page, panel, focus } = makePage();
+  focus.redraw(HTML);
+  linkOf(panel).focus({ preventScroll: true });
+  assert.equal(focus.redraw(HTML.replace('/pr/1', '/pr/2')), true);
+  assert.equal(page.active, closeOf(panel));
+  linkOf(panel).focus({ preventScroll: true });
+  assert.equal(focus.redraw(HTML.replace('/pr/1', '/pr/2').replace('<a ', '<a data-n="1" ')), true);
+  assert.equal(page.active, closeOf(panel));
+});
+
+test('a redraw that removes or rewrites a control the mouse focused leaves focus on the page and the scroll where it was', () => {
+  const { page, panel, focus, press } = makePage();
+  focus.redraw(HTML);
+  linkOf(panel).focus({ preventScroll: true });
+  page.focusVisible = false;
+  panel.scrollTop = 300;
+  assert.equal(focus.redraw(HTML.replace('<a href="/pr/1">PR</a>', '<p>No pull request</p>')), false);
+  assert.equal(page.active, page.body);
+  assert.equal(panel.scrollTop, 300);
+  assert.equal(press('Enter', true), false);
+  focus.redraw(HTML);
+  const link = linkOf(panel);
+  link.focus({ preventScroll: true });
+  assert.equal(focus.redraw(HTML.replace('/pr/1', '/pr/2')), false);
+  assert.equal(page.active, page.body);
+  assert.equal(focus.redraw(HTML.replace('/pr/1', '/pr/2').replace('Reading', 'Writing')), false);
+  link.focus({ preventScroll: true });
+  assert.equal(focus.redraw(HTML.replace('/pr/1', '/pr/2').replace('Reading', 'Editing')), false);
+  assert.equal(page.active, link);
+});
+
+test('in a browser that cannot tell a mouse focus, focus whose control a redraw removes still goes to Close', () => {
+  const { page, panel, focus } = makePage();
+  focus.redraw(HTML);
+  linkOf(panel).focus({ preventScroll: true });
+  page.focusVisible = null;
+  assert.equal(focus.redraw(HTML.replace('<a href="/pr/1">PR</a>', '')), true);
+  assert.equal(page.active, closeOf(panel));
 });
 
 test('focus whose control a redraw removes goes to the Close button, scrolled into view, not to the page', () => {
@@ -245,6 +294,18 @@ test('a row that its list redrew while the panel was open gets focus back', () =
   const [b] = t.draw(['b', 'a']);
   t.focus.closing(t.card)();
   assert.equal(t.page.active, b);
+});
+
+test('a row that shares its data with the row before it gets focus back in its own place', () => {
+  const t = makePage();
+  openFrom(t, t.draw(['a', 'a'])[1], KEY);
+  const rows = t.draw(['a', 'a']);
+  t.focus.closing(t.card)();
+  assert.equal(t.page.active, rows[1]);
+  openFrom(t, t.draw(['a', 'a'])[1], KEY);
+  const [only] = t.draw(['a']);
+  t.focus.closing(t.card)();
+  assert.equal(t.page.active, only);
 });
 
 test('closing puts focus back on a control with no data of its own', () => {
@@ -392,12 +453,12 @@ test('a mouse open forgets an earlier opener', () => {
   assert.equal(t.page.active, t.card);
 });
 
-test('the page loads panel-focus.js first, draws the panel through it when it loads, names the panel and rings Close', () => {
+test('the page loads panel-focus.js first, draws the panel through it when it loads, names the panel by what it shows and rings Close', () => {
   const map = fs.readFileSync(path.join(PUBLIC, 'map.js'), 'utf8');
   const page = fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8');
   assert.equal((map.match(/panel\.innerHTML/g) || []).length, 1);
   assert.match(map, /const panelFocus = window\.OVPanelFocus \? window\.OVPanelFocus\(panel, viewport\) : \{ redraw\(h\) \{ panel\.innerHTML = h; \}, opened\(\) \{\}, closing\(\) \{ return \(\) => \{\}; \} \};/);
-  assert.match(map, /if \(panel\.html !== html\) \{\s+const top = panel\.scrollTop;\s+const toTop = panelFocus\.redraw\(html\);\s+panel\.html = html;\s+if \(!toTop\) panel\.scrollTop = top;/);
+  assert.match(map, /if \(panel\.html !== html\) \{\s+const top = panel\.scrollTop;\s+const toTop = panelFocus\.redraw\(html\);\s+panel\.html = html;\s+panel\.setAttribute\('aria-label', selected === 'usage' \? 'Usage' : 'Details'\);\s+if \(!toTop\) panel\.scrollTop = top;/);
   assert.match(map, /function openPanel\(id\) \{[^}]*?renderPanel\(\);\s+panelFocus\.opened\(\);/);
   assert.match(map, /function closePanel\(\) \{\s+const refocus = panelFocus\.closing\(nodeEls\.get\(selected\)\);\s+selected = null;[^}]*?OVUsage\.onSelect\(\);\s+refocus\(\);\s+\}/);
   assert.ok(page.indexOf('src="/panel-focus.js"') > 0 && page.indexOf('src="/panel-focus.js"') < page.indexOf('src="/map.js"'));

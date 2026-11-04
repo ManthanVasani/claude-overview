@@ -7,6 +7,16 @@
     return !!e && (e.type === 'keydown' || (e.type === 'click' && e.detail === 0));
   }
 
+  // a mouse click can focus a control too; a browser without the selector throws
+  function fromKeyboard(el) {
+    try { return el.matches(':focus-visible'); } catch (e) { return true; }
+  }
+
+  // morph fills a control's place with whatever is drawn there next
+  function same(el) {
+    return Array.from(el.attributes).filter((a) => a.name === 'href' || a.name.indexOf('data-') === 0).map((a) => a.name + '=' + a.value).join(' ');
+  }
+
   // replacing a node loses the focus inside it
   function morph(el, next) {
     const have = Array.from(el.childNodes);
@@ -30,10 +40,14 @@
   function finder(el) {
     const scope = el.parentElement && el.parentElement.closest('[id]');
     const data = Array.from(el.attributes).filter((a) => a.name.indexOf('data-') === 0).map((a) => [a.name, a.value]);
+    const like = () => Array.from(scope.querySelectorAll(el.nodeName)).filter((c) => data.every(([k, v]) => c.getAttribute(k) === v));
+    // one session can have two rows in Needs attention
+    const nth = scope && data.length ? like().indexOf(el) : 0;
     return () => {
       if (el.isConnected) return el;
       if (!scope || !data.length) return null;
-      return Array.from(scope.querySelectorAll(el.nodeName)).find((c) => data.every(([k, v]) => c.getAttribute(k) === v)) || null;
+      const rows = like();
+      return rows[nth] || rows[0] || null;
     };
   }
 
@@ -58,11 +72,17 @@
     }, true);
     return {
       redraw(html) {
-        const held = holds();
+        const held = holds() ? document.activeElement : null;
+        const was = held && same(held);
+        const keyboard = held && fromKeyboard(held);
         const t = document.createElement('template');
         t.innerHTML = html;
         morph(panel, t.content);
-        if (!held || holds()) return false;
+        if (!held || (document.activeElement === held && same(held) === was)) return false;
+        if (!keyboard) {
+          held.blur();
+          return false;
+        }
         take();
         // the caller must not scroll back to where the removed control was
         return true;
