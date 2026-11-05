@@ -8,10 +8,9 @@ it is.
 The parts of the board named below (cards, the Needs attention list, the Touching list, the live feed, the timeline and
 Usage) are described under [Using it](README.md#using-it) in the README.
 
-It was last checked in November 2026, against the code after version 0.3.2 (where the 0.3.2 release on npm differs, it
-says so below), in headless Chromium on Linux: with scripted key presses, the accessibility tree, Lighthouse, contrast
-ratios computed from the page's colours, a colour-blindness simulation, and emulated forced colours and zoom (zoom as
-the window size it gives). No screen reader, real browser zoom, Windows
+It was last checked in November 2026, against version 0.3.3, in headless Chromium on Linux: with scripted key presses,
+the accessibility tree, Lighthouse, contrast ratios computed from the page's colours, a colour-blindness simulation, and
+emulated forced colours and zoom (zoom as the window size it gives). No screen reader, real browser zoom, Windows
 contrast theme or person using assistive technology has tried it yet.
 
 ## Where it runs
@@ -33,8 +32,8 @@ contrast theme or person using assistive technology has tried it yet.
   live feed open with Enter.
 - Most focused controls and cards show a blue outline. The exceptions are listed below.
 - The keys listed under Using it in the README zoom and fit the board, fold the timeline and open Usage. The arrow keys,
-  Page Up, Page Down, Home and End move around the board, except while focus is in a card's details or the
-  desktop-alerts menu.
+  Page Up, Page Down, Home and End move around the board, except while focus is in the Needs attention list, a card's
+  or a file's details, Usage or the desktop-alerts menu.
 - The desktop-alerts menu, opened from the bell button in the bottom row, moves focus into itself, and Esc closes it
   and puts focus back on the bell.
 - The page has a language, landmarks and headings. Each card is announced by its name and state, such as "Release
@@ -65,8 +64,6 @@ contrast theme or person using assistive technology has tried it yet.
 - Focus on a row in Touching is lost each time that list redraws, which can be every second, and on a row in Needs
   attention each time that list changes. When details opened from Touching close, focus goes back to the row only for
   a moment.
-- In the 0.3.2 release on npm, opening a card's details does not move focus to them, and while a session is busy,
-  focus inside them is lost each time they refresh.
 - These rows open another item with a mouse only: Started by, the child agents, Touched most, Who touched it and Every
   touch in a card's details, and the two Top sessions lists in Usage.
 - The New session and Session died notices that pop up disappear after 8 seconds, cannot be focused, and open their
@@ -86,7 +83,8 @@ contrast theme or person using assistive technology has tried it yet.
 - A card is announced by its name and state only. What it is doing, its branch, model and counts are only in its
   details, and the board does not say which session an agent, workflow or shell belongs to.
 - The timeline has no text version. The Touching list and the most recent tool calls are text, in the side column,
-  which a narrow window does not show (see below). The usage chart's values per day show only on mouse hover.
+  which a narrow window does not show (see below). The usage chart's values per day show only on mouse hover, and so
+  do each account's organisation and the notes on what Usage's figures count.
 - Changes are not announced: a session that needs you, a new problem, the New session and Session died notices, the
   counts and a lost connection. Desktop alerts are not shown while the page is in front.
 - A card's details are marked to be read out when they change, and they change every few seconds while a session is
@@ -95,8 +93,8 @@ contrast theme or person using assistive technology has tried it yet.
 - In a narrow timeline, the buttons that filter by kind of tool are named by their count only.
 - Which card is selected is shown only by its look, and the zoom button is named by its percentage only. Whether
   desktop alerts are on is in the bell's tooltip, not its name; the switch in its menu does say it.
-- A card's details are not a dialog, and in the 0.3.2 release on npm they are an unnamed region. The page has no
-  top-level heading, and the counts at the bottom left and the bottom row are outside its landmarks.
+- A card's details are not a dialog. The page has no top-level heading, and the counts at the bottom left and the
+  bottom row are outside its landmarks.
 
 ### Colour and contrast
 
@@ -104,8 +102,6 @@ contrast theme or person using assistive technology has tried it yet.
   toggle button is on, and the timeline does not follow the theme. This was seen in emulation.
 - The dimmed rows of finished agents, an account turned off in Usage, the agent counts on the timeline, and the other
   cards while you hover one are below 4.5:1.
-- In the 0.3.2 release on npm, the DONE, ENDED, STOPPED, FAILED, LOST, DIED and RETRYING labels, and the result of a
-  failed or killed background command while you hover it, are below 4.5:1 too.
 - Colour alone tells apart the kinds of tool on the timeline, the state dot beside each session on the timeline, and
   the model families in the usage chart. In a simulation of deuteranopia, Reads and Agents on the timeline look
   alike.
