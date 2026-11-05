@@ -36,17 +36,24 @@ function transcripts(f) {
 }
 
 // the waits file is written once the first pass is done
-function scan(f) {
+function scan(f, fail, ready) {
   const before = fs.existsSync(f.waits) ? fs.statSync(f.waits).mtimeMs : 0;
   return new Promise((resolve, reject) => {
-    const w = new Worker(path.join(__dirname, '..', 'lib', 'usage-scan.js'), { workerData: { root: f.root, index: f.index, waits: f.waits, seed: path.join(f.dir, 'no-seed.json') } });
+    const entry = fail ? path.join(__dirname, 'helpers', 'failing-reads.js') : path.join(__dirname, '..', 'lib', 'usage-scan.js');
+    const w = new Worker(entry, { workerData: { root: f.root, index: f.index, waits: f.waits, seed: path.join(f.dir, 'no-seed.json'), fail } });
     let last = null;
-    w.on('message', (m) => { if (m.progress) last = m; });
+    const notices = [];
+    let reads = 0;
+    w.on('message', (m) => {
+      if (m.progress) last = m;
+      else if (m.notice) notices.push(m.notice);
+      else if (m.reads) reads = m.reads;
+    });
     w.on('error', reject);
     const until = Date.now() + 20000;
     (function poll() {
       const p = last && last.progress;
-      if (p && p.read === p.total && p.wread === p.total && fs.existsSync(f.waits) && fs.statSync(f.waits).mtimeMs > before) w.terminate().then(() => resolve(last));
+      if (p && p.read === p.total && p.wread === p.total && fs.existsSync(f.waits) && fs.statSync(f.waits).mtimeMs > before && (!ready || ready(last))) w.terminate().then(() => resolve(Object.assign(last, { notices, reads })));
       else if (Date.now() > until) w.terminate().then(() => reject(new Error('the scan did not finish: ' + JSON.stringify(last && last.progress))));
       else setTimeout(poll, 50);
     })();
@@ -194,6 +201,99 @@ test('reading back for waits reports its progress to the end, past the part of i
     fs.writeFileSync(f.index, JSON.stringify({ v: 1, files: { [big]: done } }));
     const p = (await scan(f)).progress;
     assert.equal(p.wread, st.size);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+function unreadable(f) {
+  const bad = path.join(f.root, 'other', 'bad.jsonl');
+  write(bad, [prompt(T0, 'go'), warm(T0, { model: 'claude-bad' })]);
+  return bad;
+}
+
+test('a transcript that cannot be read is left out, and the rest are counted and saved', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    const bad = unreadable(f);
+    const m = await scan(f, { name: 'bad.jsonl', as: 'eio' });
+    const t = tally(m);
+    assert.deepEqual(t.causes, { you: 1, loop: 1 });
+    assert.equal(t.tokens[0], 4);
+    assert.equal(m.reads, 1);
+    assert.equal(m.progress.pending, 0);
+    assert.deepEqual(m.notices, ['Could not read ' + bad + ' for usage: EIO: i/o error, read']);
+    assert.equal(JSON.parse(fs.readFileSync(f.index, 'utf8')).files[bad].off, 0);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a transcript whose read fails after a report counted it as still to read is left out of the next report', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    // one tick reads four files and reports, so the oldest is read in the next
+    for (const sid of ['sid2', 'sid3']) write(path.join(f.root, 'proj', sid + '.jsonl'), [prompt(T0, 'go'), warm(T0)]);
+    const bad = unreadable(f);
+    const old = new Date(Date.now() - 864e5);
+    fs.utimesSync(bad, old, old);
+    const m = await scan(f, { name: 'bad.jsonl', as: 'eio' });
+    assert.equal(m.reads, 1);
+    assert.equal(m.progress.pending, 0);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a transcript whose read failed is read again at the next walk', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    unreadable(f);
+    const m = await scan(f, { name: 'bad.jsonl', as: 'eio', once: true }, (s) => tally(s).tokens[0] === 5);
+    assert.equal(m.reads, 1);
+    assert.equal(m.days[dayKey(T0)].m['claude-bad'][0], 1);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a read that finds a transcript shorter than its size counts nothing from it and moves no offset', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    const bad = unreadable(f);
+    const m = await scan(f, { name: 'bad.jsonl', as: 'empty' });
+    assert.equal(tally(m).tokens[0], 4);
+    assert.equal(m.reads, 1);
+    assert.deepEqual(m.notices, []);
+    assert.equal(JSON.parse(fs.readFileSync(f.index, 'utf8')).files[bad].off, 0);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a read that returns part of what was asked goes on reading', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    unreadable(f);
+    const m = await scan(f, { name: 'bad.jsonl', as: 'half' });
+    assert.equal(tally(m).tokens[0], 5);
+    assert.ok(m.reads > 1);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('an error in a read that is not a file error stops the scan', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    unreadable(f);
+    await assert.rejects(scan(f, { name: 'bad.jsonl', as: 'bug' }), /out of range/);
   } finally {
     fs.rmSync(f.dir, { recursive: true, force: true });
   }
