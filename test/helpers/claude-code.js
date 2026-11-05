@@ -25,7 +25,7 @@ function reply(t, opts) {
   const split = o.ttl === 'none' ? undefined : { ephemeral_5m_input_tokens: o.ttl === '5m' ? o.write : 0, ephemeral_1h_input_tokens: o.ttl === '1h' ? o.write : 0 };
   const usage = { input_tokens: 2, cache_creation_input_tokens: o.write, cache_read_input_tokens: o.read, output_tokens: 50, cache_creation: split };
   if (o.speed) usage.speed = o.speed;
-  const blocks = o.tools.length ? o.tools.map(([name, input, id]) => ({ type: 'tool_use', id: id || 'tu' + (++seq), name, input: input || {} })) : [{ type: 'text', text: 'done' }];
+  const blocks = o.tools.length ? o.tools.map(([name, input, toolId]) => ({ type: 'tool_use', id: toolId || 'tu' + (++seq), name, input: input || {} })) : [{ type: 'text', text: 'done' }];
   return blocks.map((b) => ({ type: 'assistant', timestamp: iso(t), message: { id, role: 'assistant', model: o.model, stop_reason: o.stop, usage, content: [b] } }));
 }
 
