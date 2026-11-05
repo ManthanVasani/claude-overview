@@ -56,9 +56,13 @@ contrast theme or person using assistive technology has tried it yet.
   or move back in time. Moving back in time needs a drag or a scroll wheel, and its height can only be changed by
   dragging. Its buttons work from the keyboard, and T folds it.
 - A card's details come after every other control in the Tab order, so after they are opened with a mouse, Tab
-  reaches their Close button last. Esc still closes them.
-- Focus on a row in Touching is lost each time that list redraws, which can be every second. When details opened
-  from that list close, focus goes back to the row only for a moment.
+  reaches their Close button last. Esc still closes them, and puts focus on the item's card, or on the page for Usage
+  and a file's details.
+- While the details refresh, keyboard focus on a control in them goes to their Close button when the control is
+  removed or turned into another, and also when a section appears or goes above it.
+- Focus on a row in Touching is lost each time that list redraws, which can be every second, and on a row in Needs
+  attention each time that list changes. When details opened from Touching close, focus goes back to the row only for
+  a moment.
 - In the 0.3.2 release on npm, opening a card's details does not move focus to them, and while a session is busy,
   focus inside them is lost each time they refresh.
 - These rows open another item with a mouse only: Started by, the child agents, Touched most, Who touched it and Every

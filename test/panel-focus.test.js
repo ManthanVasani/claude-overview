@@ -197,6 +197,20 @@ test('a control that a redraw turns into another one counts as removed, so Enter
   assert.equal(page.active, closeOf(panel));
 });
 
+test('a row that a redraw turns into another item is a new node, so a click pressed on it before cannot open the new item', () => {
+  const { panel, focus } = makePage();
+  const rows = (ids) => '<ul>' + ids.map((id) => '<li data-focus="' + id + '" tabindex="0">' + id + '</li>').join('') + '</ul>';
+  focus.redraw(rows(['a:1', 'a:2']));
+  const [first, second] = panel.querySelectorAll('li');
+  focus.redraw(rows(['a:9', 'a:1', 'a:2']));
+  assert.equal(first.isConnected, false);
+  assert.equal(second.isConnected, false);
+  assert.deepEqual(panel.querySelectorAll('li').map((li) => li.getAttribute('data-focus')), ['a:9', 'a:1', 'a:2']);
+  const kept = panel.querySelectorAll('li');
+  focus.redraw(rows(['a:9', 'a:1', 'a:2']).replace('>a:9<', '>a:9 again<'));
+  assert.deepEqual(panel.querySelectorAll('li'), kept);
+});
+
 test('a redraw that removes or rewrites a control the mouse focused leaves focus on the page and the scroll where it was', () => {
   const { page, panel, focus, press } = makePage();
   focus.redraw(HTML);
@@ -213,9 +227,10 @@ test('a redraw that removes or rewrites a control the mouse focused leaves focus
   assert.equal(focus.redraw(HTML.replace('/pr/1', '/pr/2')), false);
   assert.equal(page.active, page.body);
   assert.equal(focus.redraw(HTML.replace('/pr/1', '/pr/2').replace('Reading', 'Writing')), false);
-  link.focus({ preventScroll: true });
+  const now = linkOf(panel);
+  now.focus({ preventScroll: true });
   assert.equal(focus.redraw(HTML.replace('/pr/1', '/pr/2').replace('Reading', 'Editing')), false);
-  assert.equal(page.active, link);
+  assert.equal(page.active, now);
 });
 
 test('in a browser that cannot tell a mouse focus, focus whose control a redraw removes still goes to Close', () => {

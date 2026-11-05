@@ -12,7 +12,7 @@
     try { return el.matches(':focus-visible'); } catch (e) { return true; }
   }
 
-  // morph fills a control's place with whatever is drawn there next
+  // the handlers read what a control opens from these
   function same(el) {
     return Array.from(el.attributes).filter((a) => a.name === 'href' || a.name.indexOf('data-') === 0).map((a) => a.name + '=' + a.value).join(' ');
   }
@@ -24,7 +24,8 @@
     want.forEach((w, i) => {
       const h = have[i];
       if (!h) el.appendChild(w);
-      else if (h.nodeName !== w.nodeName) el.replaceChild(w, h);
+      // a click pressed before a redraw must not open what is drawn in its place after it
+      else if (h.nodeName !== w.nodeName || (w.nodeType === 1 && same(h) !== same(w))) el.replaceChild(w, h);
       else if (w.nodeType !== 1) {
         if (h.nodeValue !== w.nodeValue) h.nodeValue = w.nodeValue;
       } else {
@@ -73,16 +74,11 @@
     return {
       redraw(html) {
         const held = holds() ? document.activeElement : null;
-        const was = held && same(held);
         const keyboard = held && fromKeyboard(held);
         const t = document.createElement('template');
         t.innerHTML = html;
         morph(panel, t.content);
-        if (!held || (document.activeElement === held && same(held) === was)) return false;
-        if (!keyboard) {
-          held.blur();
-          return false;
-        }
+        if (!keyboard || document.activeElement === held) return false;
         take();
         // the caller must not scroll back to where the removed control was
         return true;
