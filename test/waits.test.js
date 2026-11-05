@@ -221,7 +221,7 @@ test('an agent whose call to start background agents comes back only after the c
   assert.equal(feed(next, true)[0].cause, 'other');
 });
 
-test('a waits state an older server saved part way through a reply is read on', () => {
+test('a waits state an older server saved is read on', () => {
   const s = Object.assign(waits.newState(), { id: 'm-old', t: T0, model: 'claude-opus-5-5', ttl: 300000 });
   delete s.bg;
   const rest = reply(T0, { id: 'm-old', write: 3000, read: 200000, tools: [['Agent', { prompt: 'look', run_in_background: true }, 'a1']] });
