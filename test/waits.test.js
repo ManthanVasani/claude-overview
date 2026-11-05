@@ -202,14 +202,14 @@ test('an agent whose call to start background agents comes back only after the c
   assert.equal(feed([warm(T0, task), result(T0 + 12 * MIN, 'a1'), cold(T0 + 12 * MIN + 2000)], true)[0].cause, 'agents');
   const quoted = { tools: [['Agent', { prompt: 'look', run_in_background: 'true' }, 'a1']] };
   assert.equal(feed([warm(T0, quoted), result(T0 + 12 * MIN, 'a1'), cold(T0 + 12 * MIN + 2000)], true)[0].cause, 'agents');
-  // a person's answer on a call made beside it comes first
+  // a person's answer on a call made beside it ranks above the agents
   const asked = { tools: [['Agent', { prompt: 'look', run_in_background: true }, 'a1'], ['AskUserQuestion', { questions: [] }]] };
   assert.equal(feed([warm(T0, asked), decided(T0 + 11 * MIN, 'user_temporary'), result(T0 + 12 * MIN, 'a1'), cold(T0 + 13 * MIN)], true)[0].cause, 'you');
   assert.equal(feed([warm(T0, start), result(T0 + 1000, 'a1'), notification(T0 + 15 * MIN, 'b1'), cold(T0 + 15 * MIN)])[0].cause, 'background');
   const both = { tools: [['Agent', { prompt: 'look', run_in_background: true }, 'a1'], ['Bash', { command: 'npm test' }, 'c1']] };
   assert.equal(feed([warm(T0, both), result(T0 + 1000, 'a1'), result(T0 + 9 * MIN, 'c1'), cold(T0 + 9 * MIN)], true)[0].cause, 'command');
   assert.equal(feed([warm(T0, both), result(T0 + 1000, 'c1'), result(T0 + 9 * MIN, 'a1'), cold(T0 + 9 * MIN)], true)[0].cause, 'agents');
-  // a session starts it in the background, so the command it came back after is the cause
+  // a session starts the agent in the background
   assert.equal(feed([warm(T0, both), result(T0 + 9 * MIN, 'c1'), result(T0 + 9 * MIN + 50, 'a1'), cold(T0 + 10 * MIN)])[0].cause, 'command');
   const shell = { tools: [['Bash', { command: 'npm test', run_in_background: true }, 'a1']] };
   assert.equal(feed([warm(T0, shell), result(T0 + 12 * MIN, 'a1'), cold(T0 + 12 * MIN + 2000)], true)[0].cause, 'other');
