@@ -28,8 +28,9 @@ contrast theme or person using assistive technology has tried it yet.
 - The buttons in the bottom row, the timeline's header, the side column's tabs and the Usage panel are standard
   buttons: Tab reaches them, and Enter or Space presses them. Toggle buttons say whether they are on.
 - Cards take focus in turn, and Enter or Space opens a card's details and moves focus to their Close button. Focus
-  stays there while they refresh, and Esc, or Enter on Close, puts it back on the card or row that opened them, except a
-  row in Touching (see below). Rows in Needs attention, Touching and the live feed open with Enter.
+  stays there while they refresh, and Esc, or Enter on Close, puts it back on the card or row that opened them, or on
+  the item's card when that row is gone, except a row in Touching (see below). Rows in Needs attention, Touching and the
+  live feed open with Enter.
 - Most focused controls and cards show a blue outline. The exceptions are listed below.
 - The keys listed under Using it in the README zoom and fit the board, fold the timeline and open Usage. The arrow keys,
   Page Up, Page Down, Home and End move around the board, except while focus is in a card's details or the
@@ -59,7 +60,8 @@ contrast theme or person using assistive technology has tried it yet.
   reaches them last. Esc still closes them, and when focus is inside them, it goes to the item's card if the item is on
   the map, or else to the page, as it does for Usage and a file's details.
 - While the details refresh, keyboard focus on a control in them goes to their Close button when the control is
-  removed or turned into another, and also when anything above it appears or goes, such as a section or a row.
+  removed or turned into another, and also when a row above it in its list, or a section above the one it is in,
+  appears or goes.
 - Focus on a row in Touching is lost each time that list redraws, which can be every second, and on a row in Needs
   attention each time that list changes. When details opened from Touching close, focus goes back to the row only for
   a moment.
@@ -72,6 +74,8 @@ contrast theme or person using assistive technology has tried it yet.
 - There are no skip links. Tab goes through every card, the bottom row and the side column's rows before it reaches
   the timeline.
 - The Tab order can jump up and down within a column when cards move.
+- Focus can move to a card outside the board's view, from Tab or when details close, and the board does not move to
+  show it.
 - The one-key shortcuts (F, 0, +, -, T, L, S, U) cannot be turned off or changed.
 - Ctrl + and Ctrl - zoom the board, not the page, wherever focus is, and over the board so do Ctrl + scroll and a
   pinch. To zoom the page, use the browser's menu; Ctrl 0 still resets the page's zoom.
