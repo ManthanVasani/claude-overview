@@ -33,8 +33,9 @@
   const viewport = $('viewport');
   const world = $('world');
   const panel = $('panel');
-  // a server still running from before an upgrade serves this page but not panel-focus.js
+  // a server started before an upgrade serves this page but not the scripts added since
   const panelFocus = window.OVPanelFocus ? window.OVPanelFocus(panel, viewport) : { redraw(h) { panel.innerHTML = h; }, opened() {}, closing() { return () => {}; } };
+  const hidden = window.OVHidden || null;
   const alertsEl = $('alerts');
   const hudText = $('hud-text');
   const mark = $('mark');
@@ -44,6 +45,7 @@
   const emptyEl = $('empty');
   const toastsEl = $('toasts');
   const activeBtn = $('only-active');
+  const hiddenBtn = $('hidden-btn');
   const fitBtn = $('fit');
   const pctBtn = $('zoom-pct');
   const fullBtn = $('full-screen');
@@ -63,6 +65,10 @@
   let selected = null;
   let hoverId = null;
   let onlyActive = store(ACTIVE_KEY) === '1';
+  const NO_HIDDEN = { count: 0, gone: new Set(), marked: new Map(), concealed: () => false };
+  let hid = NO_HIDDEN;
+  let peek = false;
+  let shownTotals = null;
   let view = { x: MARGIN, y: MARGIN, k: 1 };
   let restoreView = store(VIEW_KEY) === 'free' ? readJson(VIEW_AT_KEY) : null;
   let follow = restoreView ? null : store(VIEW_KEY) === 'top' ? 'top' : 'fit';
@@ -885,6 +891,23 @@
   // not setFollow: a saved free view must outlast a reload that never gets a snapshot
   paintFit();
 
+  function paintHidden() {
+    hiddenBtn.hidden = !hid.count;
+    hiddenBtn.innerHTML = '<b>' + hid.count + '</b>hidden';
+    hiddenBtn.setAttribute('aria-pressed', peek ? 'true' : 'false');
+  }
+  if (hidden) {
+    hiddenBtn.addEventListener('click', () => {
+      peek = !peek;
+      packW = 0;
+      render();
+    });
+    hidden.on(() => {
+      packW = 0;
+      render();
+    });
+  }
+
   // ---------- card markup ----------
 
   function sessionAct(s) {
@@ -939,7 +962,7 @@
           '<div class="hd">' + icon(st) + '<span class="ttl">' + esc(x.name) + '</span>' + chip(st) + '</div>' +
           actLine(sessionAct(x), wraps(n)) +
           '<div class="line"><span class="k">Asked</span>' + esc(flat(x.prompt) || '—') + '</div>' +
-          '<div class="meta">' + joinMeta([x.branch, prs, model(x.model), x.ctx ? tok(x.ctx) + ' context' : '', x.alive ? '' : 'pid ' + x.pid]) + '</div>' +
+          '<div class="meta">' + (hid.marked.has(String(x.id)) ? '<span class="badge">hidden</span> ' : '') + joinMeta([x.branch, prs, model(x.model), x.ctx ? tok(x.ctx) + ' context' : '', x.alive ? '' : 'pid ' + x.pid]) + '</div>' +
           '<div class="foot"><div class="spark"></div><span class="cnt">' + esc(runningCounts(x)) + '</span></div></div>';
       }
       case 'child':
@@ -1066,7 +1089,7 @@
       }
     }
     el.d = n;
-    el.setAttribute('aria-label', (n.kind === 'more' ? n.data.label : (n.data.name || n.data.desc || n.data.label || '') + ', ' + (LABEL[st] || st)));
+    el.setAttribute('aria-label', (n.kind === 'more' ? n.data.label : (n.data.name || n.data.desc || n.data.label || '') + ', ' + (LABEL[st] || st)) + (n.kind === 'session' && hid.marked.has(String(n.data.id)) ? ', hidden' : ''));
   }
 
   function renderLane(el, L) {
@@ -1123,15 +1146,22 @@
 
   function render() {
     if (!snap) return;
+    hid = hidden ? hidden.view(snap, peek) : NO_HIDDEN;
+    if (peek && !hid.count) {
+      peek = false;
+      hid = hidden.view(snap, false);
+    }
     const all = snap.sessions || [];
-    const byId = new Map(all.map((s) => [s.id, s]));
-    const top = all.filter((s) => !(s.parentSid && byId.has(s.parentSid)));
+    const kept = hid.gone.size ? all.filter((s) => !hid.concealed(s.id)) : all;
+    shownTotals = hid.gone.size ? hidden.totals(kept, attention()) : null;
+    const byId = new Map(kept.map((s) => [s.id, s]));
+    const top = kept.filter((s) => !(s.parentSid && byId.has(s.parentSid)));
     top.sort((a, b) => (b.alive - a.alive) || (a.startedAt || 0) - (b.startedAt || 0) || (a.id < b.id ? -1 : 1));
     index.clear();
     rawIndex.clear();
     renderAlerts();
     renderBanner();
-    const lanes = top.map((s) => layoutLane(s, all));
+    const lanes = top.map((s) => layoutLane(s, kept));
     // taken on an empty board, the restored view would not be put on screen once the sessions arrive
     const restoring = !!restoreView && lanes.length > 0;
     if (restoring) takeRestore();
@@ -1164,12 +1194,18 @@
     noticeChanges(all);
     applyHover();
     renderHud();
+    paintHidden();
     if (restoreOpen && (restoreOpen === 'usage' || lanes.length)) {
       const id = restoreOpen;
       restoreOpen = null;
       if (id === 'usage') { if (window.OVUsage) window.OVUsage.open(); }
       else if (id.indexOf('r:') === 0 || rawIndex.has(id)) openPanel(id);
       else store(OPEN_KEY, '');
+    }
+    if (selected && /^(s|a|w|wa|t):/.test(selected) && hid.concealed(selected.split(':')[1])) {
+      closePanel();
+      // a closed panel keeps the focus on a control nobody can see
+      if (panel.contains(document.activeElement)) document.activeElement.blur();
     }
     if (selected) renderPanel();
     if (window.OVLive) window.OVLive.onSnap(snap);
@@ -1265,7 +1301,7 @@
   function noticeChanges(all) {
     for (const s of all) {
       const prev = prevStates.get(s.id);
-      if (!first) {
+      if (!first && !hid.concealed(s.id)) {
         if (prev == null && s.alive) toast('New session: <b>' + esc(s.name) + '</b>', 's:' + s.id, false);
         else if (prev && prev !== 'died' && s.state === 'died') toast('Session died: <b>' + esc(s.name) + '</b>', 's:' + s.id, true);
       }
@@ -1453,7 +1489,8 @@
   function panelHtml(n) {
     const x = n.data;
     const st = visState(n);
-    let h = '<div class="p-top"><span class="p-kind">' + esc(KIND[n.kind] || '') + '</span><button type="button" class="p-x" data-close aria-label="Close">×</button></div>';
+    const hide = n.kind === 'session' && hidden ? '<button type="button" class="p-hide" data-hide="' + esc(x.id) + '">' + (hidden.has(x.id) ? 'Unhide session' : 'Hide session') + '</button>' : '';
+    let h = '<div class="p-top"><span class="p-kind">' + esc(KIND[n.kind] || '') + '</span>' + hide + '<button type="button" class="p-x" data-close aria-label="Close">×</button></div>';
     h += '<h2 class="p-title">' + esc(nameOf(n)) + '</h2>';
     h += '<div class="p-state c-' + st + '">' + icon(st) + chip(st) + '</div>';
     const problem = x.reason && (BAD.has(st) || st === 'stopped' || st === 'ended') ? x.reason : x.trouble && x.trouble.kind !== 'stalled' ? x.trouble.text : null;
@@ -1591,6 +1628,13 @@
   }
   panel.addEventListener('click', (e) => {
     if (e.target.closest('[data-close]')) { closePanel(); return; }
+    const hb = e.target.closest('[data-hide]');
+    if (hb) {
+      const on = !hidden.has(hb.getAttribute('data-hide'));
+      hidden.set(hb.getAttribute('data-hide'), on);
+      if (on && !selected) hiddenBtn.focus();
+      return;
+    }
     const res = e.target.closest('[data-res]');
     if (res) { openPanel('r:' + res.getAttribute('data-res')); return; }
     const f = e.target.closest('[data-focus]');
@@ -1604,8 +1648,12 @@
 
   // ---------- alerts, status line, banner ----------
 
+  function attention() {
+    const all = (snap && snap.attention) || [];
+    return hid.gone.size ? all.filter((a) => !hid.concealed(a.sid)) : all;
+  }
   function renderAlerts() {
-    const items = (snap && snap.attention) || [];
+    const items = attention();
     if (!items.length) {
       alertsEl.hidden = true;
       alertsEl.html = '';
@@ -1657,7 +1705,7 @@
   });
 
   function renderHud() {
-    const t = (snap && snap.totals) || {};
+    const t = shownTotals || (snap && snap.totals) || {};
     const part = (n, one, many, k) => '<span class="' + (k || '') + '"><span class="dot">·</span><b>' + n + '</b>' + (n === 1 ? one : many) + '</span>';
     const bits = [part(t.sessions || 0, 'session', 'sessions')];
     if (t.working) bits.push(part(t.working, 'working', 'working', 'k-work'));
@@ -1758,6 +1806,8 @@
     close: closePanel,
     repaint() { if (selected) renderPanel(); },
     show(id) { openPanel(id); focusNode(id); },
+    concealed(sid) { return hid.concealed(sid); },
+    concealKey() { return [...hid.gone].sort().join(); },
     // keep holds only the user's own zoom and scroll; Fit fits afresh, so its step-up guard cannot hold an old scale
     relayout(keep) { if (!keep || follow) { packW = 0; packK = 0; } render(); },
   };

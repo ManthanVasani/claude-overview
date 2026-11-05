@@ -20,6 +20,7 @@ another window? claude-overview puts every session on one live board in your bro
 - **Desktop alerts** when a session needs you or something fails, while the page is open but not in front. Turn them
   on with the bell button.
 - **Everything a session runs:** its agents, workflows and background shells, and what each one is doing now.
+- **Hide a session** you do not need to watch. It comes back on its own while it needs you.
 - **A timeline of every tool call**, over the last 15 minutes, hour or 3 hours, or live.
 - **What each session is touching:** the files, servers and sites it works with.
 - **Token usage:** totals by day, model, session and folder. If you switch between Claude accounts with
@@ -142,6 +143,7 @@ touching, and each tool call as it happens. The timeline runs along the bottom.
 | Shift + F | Full screen. So does the button at the bottom right. |
 | S | Hides or shows the right-hand column, in a window wide enough to have one. |
 | Active only | Hides finished agents, shells and workflows. |
+| Hide session, in a session's details | Takes the session and the sessions it started off the map, the timeline, the right-hand column and the counts. It comes back while it needs you or something in it fails or stops, and it sends no alert when it finishes its turn. **N hidden**, beside the counts, shows the hidden sessions again; Unhide session puts one back. |
 | Click a card | Shows what it is doing, what it has touched and what failed. Esc closes it. |
 | The timeline | Every tool call over the last 15m, 1h or 3h. Drag it to look further back; Live, or L, comes back to now. T folds it away. |
 | Usage, or U | Token totals by day, model, session and folder, how often a reply wrote the prompt cache again after a wait or an account switch and what that cost, and the plan limits of each cswap account. |
@@ -153,7 +155,8 @@ when a session finishes its turn. Clicking an alert opens that card. An alert ca
 last said, and your system may show alerts on the lock screen. The bell is hidden on a phone-sized screen.
 
 A reload keeps how you left it: the zoom (and the scroll, in a window of the same size), the open panel, expanded
-groups, the timeline and the right-hand column.
+groups, the timeline, the right-hand column and the hidden sessions. The browser keeps these for the address you
+opened, so `localhost` and `127.0.0.1` each have their own.
 
 ![The whole board: five sessions, the needs-attention list, what they are touching and the timeline](docs/screenshots/overview.png)
 

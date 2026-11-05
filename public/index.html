@@ -109,6 +109,10 @@ body:has(#full-screen[hidden]) { --ic-full: 0px; }
 .hud .dot { opacity: .4; }
 #hud-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 #hud-text > span:first-child .dot { display: none; }
+#hidden-btn { flex: none; margin: -2px -6px -2px 0; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--text-3); font: inherit; cursor: pointer; }
+#hidden-btn:hover { color: var(--text); border-color: var(--border-hi); }
+#hidden-btn:focus-visible { outline: 2px solid var(--wait); outline-offset: 2px; }
+#hidden-btn[aria-pressed="true"] { color: var(--work); border-color: rgba(52, 211, 153, .45); background: rgba(52, 211, 153, .1); }
 .mark { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--work); box-shadow: 0 0 0 3px rgba(52, 211, 153, .16), 0 0 12px rgba(52, 211, 153, .7); }
 .mark.off { background: var(--warn); box-shadow: 0 0 0 3px rgba(251, 146, 60, .16); }
 .ctrl { right: calc(var(--rail) + 16px); bottom: calc(var(--dock) + 14px); transition: right .28s cubic-bezier(.2, .8, .2, 1); display: flex; gap: 8px; padding: 0; background: none; border: 0; box-shadow: none; backdrop-filter: none; }
@@ -435,6 +439,9 @@ body.panel-open .alerts { right: calc(var(--panel) + 16px); }
 }
 .p-x:hover { background: rgba(255, 255, 255, .05); color: var(--text); }
 .p-x:focus-visible { outline: 2px solid var(--wait); outline-offset: 2px; }
+.p-hide { margin: 0 8px 0 auto; height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--border); background: transparent; cursor: pointer; font-size: 12px; color: var(--text-2); }
+.p-hide:hover { background: rgba(255, 255, 255, .05); color: var(--text); }
+.p-hide:focus-visible { outline: 2px solid var(--wait); outline-offset: 2px; }
 .p-title { margin: 8px 0 8px; font-size: 18px; line-height: 1.3; font-weight: 650; word-break: break-word; }
 .p-state { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .p-reason { margin-top: 10px; padding: 9px 11px; border-radius: 9px; background: color-mix(in srgb, var(--c) 10%, transparent); border: 1px solid color-mix(in srgb, var(--c) 30%, transparent); color: var(--text); font-size: 12.5px; }
@@ -753,7 +760,7 @@ body.panel-open .r-alerts .alerts { right: auto; }
 <div class="empty" id="empty" hidden>No Claude sessions are running.</div>
 <div class="float banner" id="banner" hidden></div>
 <section class="float alerts" id="alerts" hidden></section>
-<div class="float hud" id="hud"><span class="mark off" id="mark"></span><span id="hud-text">Connecting…</span></div>
+<div class="float hud" id="hud"><span class="mark off" id="mark"></span><span id="hud-text">Connecting…</span><button type="button" id="hidden-btn" aria-pressed="false" title="Show the sessions you hid" hidden></button></div>
 <div class="float ctrl" id="ctrl">
   <button type="button" id="usage-btn" aria-pressed="false" title="Usage: tokens and account limits (U)">Usage</button>
   <button type="button" id="only-active" aria-pressed="false" title="Hide finished agents, shells and workflows">Active only</button>
@@ -799,6 +806,7 @@ body.panel-open .r-alerts .alerts { right: auto; }
 <div class="toasts" id="toasts"></div>
 <script src="/vendor/d3.min.js"></script>
 <script src="/panel-focus.js"></script>
+<script src="/hidden.js"></script>
 <script src="/map.js"></script>
 <script src="/live.js"></script>
 <script src="/usage-ui.js"></script>

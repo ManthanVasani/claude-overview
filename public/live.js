@@ -97,6 +97,7 @@
   let snap = null;
   let sessions = [];
   let sessById = new Map();
+  let concealKey = '';
 
   function nodeOf(sid, o) {
     if (o == null) return 's:' + sid;
@@ -267,15 +268,15 @@
     const t1 = live ? now() : tEnd;
     return { t0: t1 - span, t1 };
   }
-  function wanted(st) { return !hide.has(st.g); }
-  function windowSteps(w) {
+  function wanted(st) { return !hide.has(st.g) && !OV.concealed(st.sid); }
+  function windowSteps(w, keep = wanted) {
     const out = [];
     const tn = now();
     // a long step that started before the window can cross into it
     for (let i = firstIndex(w.t0 - 30 * 60e3); i < steps.length; i++) {
       const st = steps[i];
       if (st.t > w.t1) break;
-      if (endOf(st, tn) < w.t0 || !wanted(st)) continue;
+      if (endOf(st, tn) < w.t0 || !keep(st)) continue;
       out.push(st);
     }
     return out;
@@ -437,7 +438,7 @@
   function renderKinds(list) {
     const n = {};
     const w = win();
-    for (let i = firstIndex(w.t0); i < steps.length && steps[i].t <= w.t1; i++) n[steps[i].g] = (n[steps[i].g] || 0) + 1;
+    for (let i = firstIndex(w.t0); i < steps.length && steps[i].t <= w.t1; i++) if (!OV.concealed(steps[i].sid)) n[steps[i].g] = (n[steps[i].g] || 0) + 1;
     let h = '';
     for (const k of KINDS) {
       h += '<button type="button" data-kind="' + k.id + '" aria-pressed="' + (!hide.has(k.id)) + '" title="Show or hide ' + esc(k.label.toLowerCase()) + ' (Shift-click: only these)" style="--kc:' + k.c + '"><i></i><span>' + esc(k.label) + '</span><b>' + (n[k.id] || 0) + '</b></button>';
@@ -446,7 +447,7 @@
     const tn = now();
     let lastMin = 0;
     let fails = 0;
-    for (let i = firstIndex(tn - 60e3); i < steps.length; i++) lastMin++;
+    for (let i = firstIndex(tn - 60e3); i < steps.length; i++) if (!OV.concealed(steps[i].sid)) lastMin++;
     for (const st of list) if (st.ok === 0) fails++;
     rateEl.innerHTML = '<span class="tl-total"><b>' + list.length + '</b>calls in view</span>' + (fails ? '<span class="bad"><b>' + fails + '</b>failed</span>' : '') + '<span><b>' + lastMin + '</b>/min</span>';
   }
@@ -504,7 +505,7 @@
         }
       }
     };
-    for (const x of sessions) one(x.s, x.s.id, x.depth);
+    for (const x of sessions) if (!OV.concealed(x.s.id)) one(x.s, x.s.id, x.depth);
     for (const sid of bySid.keys()) if (!seen.has(sid)) one(null, sid, 0);
     return out;
   }
@@ -1388,8 +1389,9 @@
       sec('Failed lately', failList(list, 6));
   }
   // A finished agent drops off the map before its steps leave the history, so its rows are not links.
-  function focusAttr(node) {
-    return OV.name(node) ? ' data-focus="' + esc(node) + '"' : ' data-gone title="Finished and no longer on the map"';
+  function focusAttr(st) {
+    if (OV.name(st.node)) return ' data-focus="' + esc(st.node) + '"';
+    return OV.concealed(st.sid) ? ' data-gone title="Hidden from the board"' : ' data-gone title="Finished and no longer on the map"';
   }
   function resourcePanel(key) {
     const r = resName(key);
@@ -1406,10 +1408,10 @@
       const kinds = {};
       for (const x of a.steps) if (x.node === node) kinds[x.g] = (kinds[x.g] || 0) + 1;
       const kd = KINDS.filter((k) => kinds[k.id]).map((k) => '<span class="kd" style="--kc:' + k.c + '" title="' + esc(k.label) + '">' + kinds[k.id] + '</span>').join('');
-      return '<li' + focusAttr(node) + '><span class="nm"><b>' + esc(ownerName(st)) + '</b><span>' + esc(st.o == null ? 'main thread' : sessName(st.sid)) + '</span></span><span class="kds">' + kd + '</span></li>';
+      return '<li' + focusAttr(st) + '><span class="nm"><b>' + esc(ownerName(st)) + '</b><span>' + esc(st.o == null ? 'main thread' : sessName(st.sid)) + '</span></span><span class="kds">' + kd + '</span></li>';
     }).join('');
     h += sec('Who touched it', '<ul class="p-res p-who">' + who + '</ul>');
-    const rowsH = list.slice(-80).reverse().map((st) => '<li class="' + (st.ok === 0 ? 'failed' : '') + '"' + focusAttr(st.node) + ' style="--kc:' + (st.ok === 0 ? BAD : KC[st.g]) + '"><span class="t">' + esc(clock(st.t, true)) + '</span><span class="fk"></span><span class="lb">' + esc(flat(st.l)) + '<small>' + esc(ownerName(st)) + '</small></span>' + statusHtml(st) + '</li>').join('');
+    const rowsH = list.slice(-80).reverse().map((st) => '<li class="' + (st.ok === 0 ? 'failed' : '') + '"' + focusAttr(st) + ' style="--kc:' + (st.ok === 0 ? BAD : KC[st.g]) + '"><span class="t">' + esc(clock(st.t, true)) + '</span><span class="fk"></span><span class="lb">' + esc(flat(st.l)) + '<small>' + esc(ownerName(st)) + '</small></span>' + statusHtml(st) + '</li>').join('');
     h += sec('Every touch', '<ul class="p-touches">' + rowsH + '</ul>');
     return h;
   }
@@ -1451,6 +1453,8 @@
       if (pn - lastAgg > 900 || !agg.size) {
         lastAgg = pn;
         agg = aggregate(shown);
+        // a hidden session editing the same file is a collision too
+        if (!hide.has('edit')) for (const st of windowSteps(w, (x) => x.k === 'edit' && OV.concealed(x.sid))) if (agg.has(st.r)) agg.get(st.r).editors.add(st.sid);
         renderTouch(w);
         renderKinds(shown);
         renderFeedHead();
@@ -1472,6 +1476,12 @@
       snap = s;
       sessions = flattenSessions();
       sessById = new Map(sessions.map((x) => [x.s.id, x.s]));
+      const key = OV.concealKey();
+      if (key !== concealKey) {
+        concealKey = key;
+        rebuildFeed();
+        lastAgg = 0;
+      }
       dirty(true);
     },
     onView() {
