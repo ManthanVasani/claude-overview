@@ -9,8 +9,7 @@ const T0 = Date.parse('2026-11-04T10:00:00Z');
 const MIN = 60000;
 
 // parses a line only when the usage scanner would
-function feed(entries, agent) {
-  const s = waits.newState();
+function feed(entries, agent, s = waits.newState()) {
   const out = [];
   for (const e of entries.flat()) {
     const text = typeof e === 'string' ? e : JSON.stringify(e);
@@ -192,4 +191,37 @@ test('a call that waited on a permission prompt was waiting on you', () => {
   // a result that holds usage is parsed
   const agent = feed([warm(T0, { tools: [['Agent', { prompt: 'look' }]] }), decided(T0 + 9 * MIN, 'user_temporary', { usage: { input_tokens: 1 }, role: 'assistant' }), cold(T0 + 10 * MIN)]);
   assert.equal(agent[0].cause, 'you');
+});
+
+test('an agent whose call to start background agents comes back only after the cache has run out was waiting on its agents', () => {
+  const at = (t) => new Date(t).toISOString();
+  const start = { tools: [['Agent', { prompt: 'look', run_in_background: true }, 'a1']] };
+  const handback = { type: 'attachment', timestamp: at(T0 + 12 * MIN), attachment: { type: 'queued_command', prompt: 'found it', isMeta: true, origin: { kind: 'peer', handback: true } } };
+  assert.equal(feed([warm(T0, start), result(T0 + 12 * MIN, 'a1'), handback, cold(T0 + 12 * MIN + 2000)], true)[0].cause, 'agents');
+  const task = { tools: [['Task', { prompt: 'look', run_in_background: true }, 'a1']] };
+  assert.equal(feed([warm(T0, task), result(T0 + 12 * MIN, 'a1'), cold(T0 + 12 * MIN + 2000)], true)[0].cause, 'agents');
+  const quoted = { tools: [['Agent', { prompt: 'look', run_in_background: 'true' }, 'a1']] };
+  assert.equal(feed([warm(T0, quoted), result(T0 + 12 * MIN, 'a1'), cold(T0 + 12 * MIN + 2000)], true)[0].cause, 'agents');
+  // a person's answer on a call made beside it comes first
+  const asked = { tools: [['Agent', { prompt: 'look', run_in_background: true }, 'a1'], ['AskUserQuestion', { questions: [] }]] };
+  assert.equal(feed([warm(T0, asked), decided(T0 + 11 * MIN, 'user_temporary'), result(T0 + 12 * MIN, 'a1'), cold(T0 + 13 * MIN)], true)[0].cause, 'you');
+  assert.equal(feed([warm(T0, start), result(T0 + 1000, 'a1'), notification(T0 + 15 * MIN, 'b1'), cold(T0 + 15 * MIN)])[0].cause, 'background');
+  const both = { tools: [['Agent', { prompt: 'look', run_in_background: true }, 'a1'], ['Bash', { command: 'npm test' }, 'c1']] };
+  assert.equal(feed([warm(T0, both), result(T0 + 1000, 'a1'), result(T0 + 9 * MIN, 'c1'), cold(T0 + 9 * MIN)])[0].cause, 'command');
+  assert.equal(feed([warm(T0, both), result(T0 + 1000, 'c1'), result(T0 + 9 * MIN, 'a1'), cold(T0 + 9 * MIN)], true)[0].cause, 'agents');
+  const shell = { tools: [['Bash', { command: 'npm test', run_in_background: true }, 'a1']] };
+  assert.equal(feed([warm(T0, shell), result(T0 + 12 * MIN, 'a1'), cold(T0 + 12 * MIN + 2000)], true)[0].cause, 'other');
+  const hour = Object.assign({ ttl: '1h' }, start);
+  assert.equal(feed([warm(T0, hour), result(T0 + 30 * MIN, 'a1'), cold(T0 + 70 * MIN, { ttl: '1h' })], true)[0].cause, 'other');
+  assert.equal(feed([warm(T0, hour), result(T0 + 60 * MIN, 'a1'), cold(T0 + 61 * MIN, { ttl: '1h' })], true)[0].cause, 'agents');
+  // a background agent an earlier call started does not hold up the next one
+  const next = [warm(T0, start), result(T0 + 1000, 'a1'), warm(T0 + 2000), result(T0 + 12 * MIN, 'a1'), cold(T0 + 12 * MIN + 2000)];
+  assert.equal(feed(next, true)[0].cause, 'other');
+});
+
+test('a waits state an older server saved part way through a reply is read on', () => {
+  const s = Object.assign(waits.newState(), { id: 'm-old', t: T0, model: 'claude-opus-5-5', ttl: 300000 });
+  delete s.bg;
+  const rest = reply(T0, { id: 'm-old', write: 3000, read: 200000, tools: [['Agent', { prompt: 'look', run_in_background: true }, 'a1']] });
+  assert.equal(feed([rest, result(T0 + 12 * MIN, 'a1'), cold(T0 + 12 * MIN + 2000)], true, s)[0].cause, 'agents');
 });
