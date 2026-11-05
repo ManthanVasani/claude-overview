@@ -141,3 +141,15 @@ test('while the waits are read back, the Usage panel says its count is low for n
   const behind = Object.assign({}, today, { progress: { total: 2e9, read: 2e9, wread: 1e9, pending: 0 } });
   assert.match(text(await panel(behind)), /Cache written again Still reading older transcripts for this: 1\.0 of 2\.0 GB read, so it is low for now/);
 });
+
+test('the Usage panel says how many transcripts could not be read, under the counts they leave low', async () => {
+  const { today } = await replies;
+  const left = (unreadable, uncounted) => Object.assign({}, today, { progress: { total: 1, read: 1, wread: 1, pending: 0, unreadable, uncounted } });
+  const both = text(await panel(left(2, 1)));
+  assert.match(both, /Tokens .* 1 transcript could not be read, so totals are low: the board's messages name it Output /);
+  assert.match(both, /Cache written again 2 transcripts could not be read, so it is low: the board's messages name them /);
+  const waitsOnly = text(await panel(left(1, 0)));
+  assert.doesNotMatch(waitsOnly, /so totals are low/);
+  assert.match(waitsOnly, /Cache written again 1 transcript could not be read, so it is low: the board's messages name it /);
+  assert.doesNotMatch(text(await panel(today)), /could not be read/);
+});

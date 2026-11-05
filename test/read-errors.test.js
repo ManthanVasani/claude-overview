@@ -9,6 +9,7 @@ const { Tail } = require('../lib/files');
 const log = require('../lib/log');
 const { backfillTasks } = require('../lib/shells');
 const { histPoll, stepRows } = require('../lib/steps');
+const { systemError } = require('./helpers/system-error');
 
 function withReads(fail, fn) {
   const readSync = fs.readSync;
@@ -27,10 +28,6 @@ function once(make) {
     used = true;
     return make();
   };
-}
-
-function systemError(code, errno, syscall) {
-  return Object.assign(new Error(code + ': ' + syscall), { code, errno, syscall });
 }
 
 const ioError = () => systemError('EIO', -5, 'read');
