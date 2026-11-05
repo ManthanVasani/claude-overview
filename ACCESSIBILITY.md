@@ -56,8 +56,8 @@ contrast theme or person using assistive technology has tried it yet.
   or move back in time. Moving back in time needs a drag or a scroll wheel, and its height can only be changed by
   dragging. Its buttons work from the keyboard, and T folds it.
 - A card's details come after every other control in the Tab order, so after they are opened with a mouse, Tab
-  reaches their Close button last. Esc still closes them, and when focus is inside them, it goes to the item's card if
-  the item is on the map, or else to the page, as it does for Usage and a file's details.
+  reaches them last. Esc still closes them, and when focus is inside them, it goes to the item's card if the item is on
+  the map, or else to the page, as it does for Usage and a file's details.
 - While the details refresh, keyboard focus on a control in them goes to their Close button when the control is
   removed or turned into another, and also when anything above it appears or goes, such as a section or a row.
 - Focus on a row in Touching is lost each time that list redraws, which can be every second, and on a row in Needs

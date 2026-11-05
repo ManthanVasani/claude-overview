@@ -7,7 +7,7 @@
     return !!e && (e.type === 'keydown' || (e.type === 'click' && e.detail === 0));
   }
 
-  // a mouse click can focus a control too; a browser without the selector throws
+  // a browser without the selector throws
   function fromKeyboard(el) {
     try { return el.matches(':focus-visible'); } catch (e) { return true; }
   }
@@ -26,7 +26,7 @@
     want.forEach((w, i) => {
       const h = have[i];
       if (!h) el.appendChild(w);
-      // a click pressed before a redraw must not open what is drawn in its place after it
+      // a control focused or pressed before a redraw must not open what is drawn in its place
       else if (h.nodeName !== w.nodeName || (w.nodeType === 1 && same(h) !== same(w))) el.replaceChild(w, h);
       else if (w.nodeType !== 1) {
         if (h.nodeValue !== w.nodeValue) h.nodeValue = w.nodeValue;
@@ -43,14 +43,10 @@
   function finder(el) {
     const scope = el.parentElement && el.parentElement.closest('[id]');
     const data = Array.from(el.attributes).filter((a) => a.name.indexOf('data-') === 0).map((a) => [a.name, a.value]);
-    const like = () => Array.from(scope.querySelectorAll(el.nodeName)).filter((c) => data.every(([k, v]) => c.getAttribute(k) === v));
-    // one session can have two rows in Needs attention
-    const nth = scope && data.length ? like().indexOf(el) : 0;
     return () => {
       if (el.isConnected) return el;
       if (!scope || !data.length) return null;
-      const rows = like();
-      return rows[nth] || rows[0] || null;
+      return Array.from(scope.querySelectorAll(el.nodeName)).find((c) => data.every(([k, v]) => c.getAttribute(k) === v)) || null;
     };
   }
 
@@ -65,7 +61,7 @@
       if (x) x.focus({ preventScroll: true });
       moved = true;
     }
-    // a held key repeats on wherever focus moved: Close, or the card or row that reopens the panel
+    // a held key would go on to press whatever focus moved to
     document.addEventListener('keydown', (e) => {
       if (!e.repeat) moved = false;
       else if (moved && (e.key === 'Enter' || e.key === ' ')) {

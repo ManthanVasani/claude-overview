@@ -242,7 +242,7 @@ test('in a browser that cannot tell a mouse focus, focus whose control a redraw 
   assert.equal(page.active, closeOf(panel));
 });
 
-test('focus whose control a redraw removes goes to the Close button, scrolled into view, not to the page', () => {
+test('focus whose control a redraw removes goes to the Close button, scrolled into view, and a key held on it does not go on to press Close', () => {
   const { page, panel, focus, press } = makePage();
   focus.redraw(HTML);
   linkOf(panel).focus({ preventScroll: true });
@@ -250,7 +250,6 @@ test('focus whose control a redraw removes goes to the Close button, scrolled in
   assert.equal(focus.redraw(HTML.replace('<a href="/pr/1">PR</a>', '<p>No pull request</p>')), true);
   assert.equal(page.active, closeOf(panel));
   assert.equal(panel.scrollTop, 0);
-  // a key held on the removed control must not go on to press Close
   assert.equal(press('Enter', true), true);
 });
 
@@ -309,18 +308,6 @@ test('a row that its list redrew while the panel was open gets focus back', () =
   const [b] = t.draw(['b', 'a']);
   t.focus.closing(t.card)();
   assert.equal(t.page.active, b);
-});
-
-test('a row that shares its data with the row before it gets focus back in its own place', () => {
-  const t = makePage();
-  openFrom(t, t.draw(['a', 'a'])[1], KEY);
-  const rows = t.draw(['a', 'a']);
-  t.focus.closing(t.card)();
-  assert.equal(t.page.active, rows[1]);
-  openFrom(t, t.draw(['a', 'a'])[1], KEY);
-  const [only] = t.draw(['a']);
-  t.focus.closing(t.card)();
-  assert.equal(t.page.active, only);
 });
 
 test('closing puts focus back on a control with no data of its own', () => {
@@ -468,7 +455,7 @@ test('a mouse open forgets an earlier opener', () => {
   assert.equal(t.page.active, t.card);
 });
 
-test('the page loads panel-focus.js first, draws the panel through it when it loads, names the panel by what it shows and rings Close', () => {
+test('the page loads panel-focus.js before map.js, draws, opens and closes the panel through it when it loads, names the panel by what it shows and rings Close', () => {
   const map = fs.readFileSync(path.join(PUBLIC, 'map.js'), 'utf8');
   const page = fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8');
   assert.equal((map.match(/panel\.innerHTML/g) || []).length, 1);
