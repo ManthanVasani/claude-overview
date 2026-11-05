@@ -8,7 +8,7 @@ const { prompt, reply, result, notification } = require('./helpers/claude-code')
 const T0 = Date.parse('2026-11-04T10:00:00Z');
 const MIN = 60000;
 
-// feeds lines the way the usage scanner reads them: only a line that can hold usage is parsed
+// parses a line only when the usage scanner would
 function feed(entries, agent) {
   const s = waits.newState();
   const out = [];
@@ -43,7 +43,6 @@ test('the cache lifetime comes from the last call that wrote to it', () => {
   assert.equal(feed([warm(T0, { ttl: '1h' }), cold(T0 + 59 * MIN, { ttl: '1h' })]).length, 0);
   assert.equal(feed([warm(T0, { ttl: '1h' }), cold(T0 + 61 * MIN, { ttl: '1h' })]).length, 1);
   assert.equal(feed([warm(T0, { ttl: '1h' }), warm(T0 + MIN, { write: 0 }), cold(T0 + 30 * MIN)]).length, 0);
-  // a call that only read the cache keeps the lifetime it was written with
   assert.equal(feed([warm(T0, { ttl: '1h' }), warm(T0 + MIN, { write: 0 }), cold(T0 + 62 * MIN)]).length, 1);
   assert.equal(feed([warm(T0, { ttl: 'none' }), cold(T0 + 10 * MIN, { ttl: 'none' })]).length, 0);
 });
@@ -86,6 +85,10 @@ test('with nothing running in the foreground, what woke the next call is the cau
   assert.equal(feed([warm(T0, { stop: 'end_turn' }), prompt(T0 + 15 * MIN, 'next'), notification(T0 + 16 * MIN, 'b1'), cold(T0 + 16 * MIN)])[0].cause, 'you');
   const meta = Object.assign(prompt(T0 + 19 * MIN, 'a reminder'), { isMeta: true });
   assert.equal(feed([warm(T0, { stop: 'end_turn' }), meta, cold(T0 + 20 * MIN)])[0].cause, 'other');
+  assert.equal(feed([warm(T0, { stop: 'end_turn' }), meta, cold(T0 + 20 * MIN)], true)[0].cause, 'other');
+  const sent = Object.assign(prompt(T0 + 19 * MIN, 'go on'), { isMeta: true, origin: { kind: 'coordinator' } });
+  assert.equal(feed([warm(T0, { stop: 'end_turn' }), sent, cold(T0 + 20 * MIN)], true)[0].cause, 'resumed');
+  assert.equal(feed([warm(T0, { stop: 'end_turn' }), sent, cold(T0 + 20 * MIN)])[0].cause, 'other');
   // a command's output can quote a notification
   const quoting = result(T0 + 19 * MIN, 'x', null, '<task-notification> from a log');
   assert.equal(feed([warm(T0, { stop: 'end_turn' }), quoting, cold(T0 + 20 * MIN)])[0].cause, 'other');
@@ -141,13 +144,12 @@ test('the extra cost is the write price over the read price, at the prices for t
   near(waits.cost('claude-opus-5-5 long', 0, 203000), 203000 * (2 - 0.05) * 4 / 1e6);
   near(waits.cost('claude-opus-5-5 fast long', 203000, 0), 203000 * (1.25 - 0.05) * 8 / 1e6);
   near(waits.cost('claude-sonnet-5-5 long', 203000, 0), 203000 * (1.25 - 0.1) * 2 / 1e6);
-  // Haiku 5.5 costs five times as much past 100k tokens of prompt
   near(waits.cost('claude-haiku-5-5 long', 203000, 0), 203000 * (1.25 - 0.1) * 0.5 / 1e6);
   near(waits.cost('claude-haiku-5-5', 50000, 0), 50000 * (1.25 - 0.1) * 0.1 / 1e6);
   assert.equal(waits.cost('claude-opus-9 long', 203000, 0), null);
 });
 
-test('each priced model is matched by its own row, and a newer one is left unpriced', () => {
+test('each priced model is matched by its own row, and any other id is left unpriced', () => {
   const per = (m) => { const c = waits.cost(m, 1e6, 0); return c == null ? null : Math.round(c * 1000) / 1000; };
   assert.equal(per('claude-opus-5-5'), 4.8);
   assert.equal(per('claude-opus-5-5[1m]'), 4.8);
@@ -181,6 +183,8 @@ test('a call that waited on a permission prompt was waiting on you', () => {
   const early = feed([warm(T0, { tools: [['AskUserQuestion', { questions: [] }]] }), decided(T0 + MIN, 'user_temporary'), cold(T0 + 10 * MIN)]);
   assert.equal(early[0].cause, 'other');
   assert.equal(run('user_reject'), 'you');
+  const denied = Object.assign(result(T0 + 9 * MIN, 'x', { stdout: '' }), { permissionDecision: { decision: 'reject', source: 'user_reject', reasonType: 'rule' } });
+  assert.equal(feed([warm(T0, { tools: [['Bash', { command: 'npm test' }]] }), denied, cold(T0 + 10 * MIN)])[0].cause, 'command');
   assert.equal(run('user_permanent'), 'command');
   assert.equal(run('config'), 'command');
   // the call's own decision comes after its result, which can hold another

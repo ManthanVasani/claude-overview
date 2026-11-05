@@ -25,7 +25,6 @@ function write(file, entries) {
   fs.writeFileSync(file, entries.flat().map((e) => JSON.stringify(e)).join('\n') + '\n');
 }
 
-// the server's reply for each range once its worker has read every transcript
 const CHILD = `
 const fs = require('fs');
 const path = require('path');
@@ -125,6 +124,16 @@ test('a cause or session row that holds tokens with no price shows no cost, as i
   assert.match(t, / Waiting for you 1 time 500k A sleep or poll loop 2 times · about \$1\.95 406k /);
   assert.match(t, /sid1 mostly waiting for you · 3 times /);
   assert.doesNotMatch(t, /sid1 mostly waiting for you · 3 times · about/);
+});
+
+test('a cost under half a cent says so rather than $0.00', async () => {
+  const { all } = await replies;
+  const small = JSON.parse(JSON.stringify(all));
+  small.waits.totals[2] = 0.003;
+  small.waits.causes[1][1][2] = 0.002;
+  const t = text(await panel(small));
+  assert.match(t, /tokens of cache again: under \$0\.01 more than reading them/);
+  assert.match(t, / A sleep or poll loop 2 times · under \$0\.01 406k /);
 });
 
 test('while the waits are read back, the Usage panel says its count is low for now', async () => {

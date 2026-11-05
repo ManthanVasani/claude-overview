@@ -121,7 +121,7 @@ test('waits are counted again from the start when the index started a file again
   }
 });
 
-test('saved waits are read back, not counted again, and a waits file a save left half written is cleared', async () => {
+test('saved waits are read back, not counted again, and a stale temporary file of a waits save is removed', async () => {
   const f = folder();
   try {
     const { session } = transcripts(f);

@@ -195,8 +195,9 @@
   function cause(c) { return CAUSES[c] || c; }
   function times(n) { return n === 1 ? '1 time' : n.toLocaleString() + ' times'; }
   function dollars(x) { return '$' + (x >= 100 ? Math.round(x).toLocaleString() : x.toFixed(2)); }
+  function about(x) { return x < 0.005 ? 'under $0.01' : 'about ' + dollars(x); }
   // index into a [times, tokens, dollars, tokens with no price] row
-  function price(a) { return a[3] ? '' : ' · about ' + dollars(a[2]); }
+  function price(a) { return a[3] ? '' : ' · ' + about(a[2]); }
   function waitsHtml(d) {
     const w = d.waits;
     const p = d.progress;
@@ -208,7 +209,7 @@
     if (w.from) h += '<p class="u-note">Counted from ' + esc(new Date(w.from + 'T12:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })) + ': older transcripts were deleted before this was counted</p>';
     if (t[0]) {
       const hint = 'The prompt cache expires when a session or agent makes no call for its lifetime, 5 minutes or 1 hour, and an account switch starts it again. The next reply then writes the whole prompt to it, at the write price instead of the read price.';
-      let cost = ': about ' + dollars(t[2]) + ' more than reading them, at API list prices';
+      let cost = ': ' + about(t[2]) + ' more than reading them, at API list prices';
       if (t[3] === t[1]) cost = ', on models with no price here';
       else if (t[3]) cost += ', for ' + Math.min(99, Math.max(1, Math.floor((1 - t[3] / t[1]) * 100))) + '% of them; the rest are on models with no price here';
       h += '<p class="u-note" title="' + esc(hint) + '">' + esc(times(t[0])) + ' a reply wrote ' + fmt(t[1]) + ' tokens of cache again' + cost + '</p>';
