@@ -357,6 +357,73 @@ test('a read that finds a transcript shorter than its size counts nothing from i
   }
 });
 
+test('a transcript cut shorter while it is read is counted again from its new content, and not named as unreadable', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    const bad = path.join(f.root, 'other', 'bad.jsonl');
+    const first = warm(T0, { model: 'claude-bad' });
+    write(bad, [first, warm(T0 + MIN, { model: 'claude-bad' })]);
+    const m = await scan(f, { name: 'bad.jsonl', as: 'cut', once: true, cut: Buffer.byteLength(JSON.stringify(first[0]) + '\n') });
+    assert.equal(m.reads, 1);
+    assert.equal(m.days[dayKey(T0)].m['claude-bad'][0], 1);
+    assert.equal(m.progress.unreadable, 0);
+    assert.deepEqual(m.notices, []);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a transcript rewritten to its old size while it is read is read again, and not named as unreadable', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    const bad = path.join(f.root, 'other', 'bad.jsonl');
+    const first = warm(T0, { model: 'claude-bad' });
+    write(bad, [first, warm(T0 + MIN, { model: 'claude-bad' })]);
+    const m = await scan(f, { name: 'bad.jsonl', as: 'regrow', once: true, cut: Buffer.byteLength(JSON.stringify(first[0]) + '\n') });
+    assert.equal(m.reads, 1);
+    assert.equal(m.days[dayKey(T0)].m['claude-bad'][0], 2);
+    assert.equal(m.progress.unreadable, 0);
+    assert.deepEqual(m.notices, []);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a transcript that cannot be opened is named and left out, not taken for deleted', async () => {
+  const f = folder();
+  try {
+    const { session } = transcripts(f);
+    const bad = unreadable(f);
+    await scan(f);
+    fs.appendFileSync(bad, JSON.stringify(warm(T0 + MIN, { model: 'claude-bad' })[0]) + '\n');
+    fs.appendFileSync(session, JSON.stringify(warm(T0 + 71 * MIN, { ttl: '1h' })[0]) + '\n');
+    const m = await scan(f, { name: 'bad.jsonl', as: 'eacces' });
+    assert.equal(m.reads, 1);
+    assert.equal(m.days[dayKey(T0)].m['claude-bad'][0], 1);
+    assert.equal(m.progress.unreadable, 1);
+    assert.equal(m.progress.uncounted, 1);
+    assert.deepEqual(m.notices, ['Could not read ' + bad + ' for usage: EACCES: open']);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a transcript removed before it is opened is not named as unreadable', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    unreadable(f);
+    const m = await scan(f, { name: 'bad.jsonl', as: 'enoent' });
+    assert.equal(m.reads, 1);
+    assert.equal(m.progress.unreadable, 0);
+    assert.deepEqual(m.notices, []);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
 test('a transcript that cannot be read again for its waits keeps its tokens and is left out of the waits count', async () => {
   const f = folder();
   try {
