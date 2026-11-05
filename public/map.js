@@ -33,6 +33,8 @@
   const viewport = $('viewport');
   const world = $('world');
   const panel = $('panel');
+  // a server still running from before an upgrade serves this page but not panel-focus.js
+  const panelFocus = window.OVPanelFocus ? window.OVPanelFocus(panel, viewport) : { redraw(h) { panel.innerHTML = h; }, opened() {}, closing() { return () => {}; } };
   const alertsEl = $('alerts');
   const hudText = $('hud-text');
   const mark = $('mark');
@@ -1549,9 +1551,10 @@
     else html = panelHtml(n);
     if (panel.html !== html) {
       const top = panel.scrollTop;
-      panel.innerHTML = html;
+      const toTop = panelFocus.redraw(html);
       panel.html = html;
-      panel.scrollTop = top;
+      panel.setAttribute('aria-label', selected === 'usage' ? 'Usage' : 'Details');
+      if (!toTop) panel.scrollTop = top;
     }
     tickIn(panel);
   }
@@ -1566,12 +1569,14 @@
     if (el) el.classList.add('sel');
     panel.html = null;
     renderPanel();
+    panelFocus.opened();
     clampView();
     applyView(true);
     if (window.OVLive) window.OVLive.onSelect();
     if (window.OVUsage) window.OVUsage.onSelect();
   }
   function closePanel() {
+    const refocus = panelFocus.closing(nodeEls.get(selected));
     selected = null;
     restoreOpen = null;
     store(OPEN_KEY, '');
@@ -1582,6 +1587,7 @@
     applyView(true);
     if (window.OVLive) window.OVLive.onSelect();
     if (window.OVUsage) window.OVUsage.onSelect();
+    refocus();
   }
   panel.addEventListener('click', (e) => {
     if (e.target.closest('[data-close]')) { closePanel(); return; }

@@ -8,9 +8,10 @@ it is.
 The parts of the board named below (cards, the Needs attention list, the Touching list, the live feed, the timeline and
 Usage) are described under [Using it](README.md#using-it) in the README.
 
-It was last checked against version 0.3.2, in November 2026, in headless Chromium on Linux: with scripted key presses,
-the accessibility tree, Lighthouse, contrast ratios computed from the page's colours, a colour-blindness simulation, and
-emulated forced colours and zoom (zoom as the window size it gives). No screen reader, real browser zoom, Windows
+It was last checked in November 2026, against the code after version 0.3.2 (where the 0.3.2 release on npm differs, it
+says so below), in headless Chromium on Linux: with scripted key presses, the accessibility tree, Lighthouse, contrast
+ratios computed from the page's colours, a colour-blindness simulation, and emulated forced colours and zoom (zoom as
+the window size it gives). No screen reader, real browser zoom, Windows
 contrast theme or person using assistive technology has tried it yet.
 
 ## Where it runs
@@ -26,8 +27,10 @@ contrast theme or person using assistive technology has tried it yet.
 
 - The buttons in the bottom row, the timeline's header, the side column's tabs and the Usage panel are standard
   buttons: Tab reaches them, and Enter or Space presses them. Toggle buttons say whether they are on.
-- Cards take focus in turn, and Enter or Space opens a card's details. Esc closes them. Rows in Needs attention,
-  Touching and the live feed open with Enter.
+- Cards take focus in turn, and Enter or Space opens a card's details and moves focus to their Close button. Focus
+  stays there while they refresh, and Esc, or Enter on Close, puts it back on the card or row that opened them, or on
+  the item's card when that row is gone, except a row in Touching (see below). Rows in Needs attention, Touching and the
+  live feed open with Enter.
 - Most focused controls and cards show a blue outline. The exceptions are listed below.
 - The keys listed under Using it in the README zoom and fit the board, fold the timeline and open Usage. The arrow keys,
   Page Up, Page Down, Home and End move around the board, except while focus is in a card's details or the
@@ -53,9 +56,17 @@ contrast theme or person using assistive technology has tried it yet.
 - The timeline can only be used with a mouse or touch: a keyboard cannot open a call from it, show a session's agents
   or move back in time. Moving back in time needs a drag or a scroll wheel, and its height can only be changed by
   dragging. Its buttons work from the keyboard, and T folds it.
-- Opening a card's details does not move focus to them. Their Close button comes after every other control in the Tab
-  order, and while a session is busy, focus inside the details is lost each time they refresh, every few seconds. Esc
-  still closes them.
+- A card's details come after every other control in the Tab order, so after they are opened with a mouse, Tab
+  reaches them last. Esc still closes them, and when focus is inside them, it goes to the item's card if the item is on
+  the map, or else to the page, as it does for Usage and a file's details.
+- While the details refresh, keyboard focus on a control in them goes to their Close button when the control is
+  removed or turned into another, and also when a row above it in its list, or a section above the one it is in,
+  appears or goes.
+- Focus on a row in Touching is lost each time that list redraws, which can be every second, and on a row in Needs
+  attention each time that list changes. When details opened from Touching close, focus goes back to the row only for
+  a moment.
+- In the 0.3.2 release on npm, opening a card's details does not move focus to them, and while a session is busy,
+  focus inside them is lost each time they refresh.
 - These rows open another item with a mouse only: Started by, the child agents, Touched most, Who touched it and Every
   touch in a card's details, and Top sessions in Usage.
 - The New session and Session died notices that pop up disappear after 8 seconds, cannot be focused, and open their
@@ -63,6 +74,8 @@ contrast theme or person using assistive technology has tried it yet.
 - There are no skip links. Tab goes through every card, the bottom row and the side column's rows before it reaches
   the timeline.
 - The Tab order can jump up and down within a column when cards move.
+- Focus can move to a card outside the board's view, from Tab or when details close, and the board does not move to
+  show it.
 - The one-key shortcuts (F, 0, +, -, T, L, S, U) cannot be turned off or changed.
 - Ctrl + and Ctrl - zoom the board, not the page, wherever focus is, and over the board so do Ctrl + scroll and a
   pinch. To zoom the page, use the browser's menu; Ctrl 0 still resets the page's zoom.
@@ -82,8 +95,8 @@ contrast theme or person using assistive technology has tried it yet.
 - In a narrow timeline, the buttons that filter by kind of tool are named by their count only.
 - Which card is selected is shown only by its look, and the zoom button is named by its percentage only. Whether
   desktop alerts are on is in the bell's tooltip, not its name; the switch in its menu does say it.
-- A card's details are an unnamed region, not a dialog. The page has no top-level heading, and the counts at the bottom
-  left and the bottom row are outside its landmarks.
+- A card's details are not a dialog, and in the 0.3.2 release on npm they are an unnamed region. The page has no
+  top-level heading, and the counts at the bottom left and the bottom row are outside its landmarks.
 
 ### Colour and contrast
 
