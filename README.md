@@ -144,7 +144,7 @@ touching, and each tool call as it happens. The timeline runs along the bottom.
 | Active only | Hides finished agents, shells and workflows. |
 | Click a card | Shows what it is doing, what it has touched and what failed. Esc closes it. |
 | The timeline | Every tool call over the last 15m, 1h or 3h. Drag it to look further back; Live, or L, comes back to now. T folds it away. |
-| Usage, or U | Token totals by day, model, session and folder, and the plan limits of each cswap account. |
+| Usage, or U | Token totals by day, model, session and folder, how often a reply wrote the prompt cache again after a wait or an account switch and what that cost, and the plan limits of each cswap account. |
 
 To turn on desktop alerts, click the bell button in the bottom row and turn on the switch in its menu. The first
 time, the browser asks whether the page may show notifications: allow it. Alerts show while the page is open but not

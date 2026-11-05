@@ -57,7 +57,7 @@ contrast theme or person using assistive technology has tried it yet.
   order, and while a session is busy, focus inside the details is lost each time they refresh, every few seconds. Esc
   still closes them.
 - These rows open another item with a mouse only: Started by, the child agents, Touched most, Who touched it and Every
-  touch in a card's details, and Top sessions in Usage.
+  touch in a card's details, and the two Top sessions lists in Usage.
 - The New session and Session died notices that pop up disappear after 8 seconds, cannot be focused, and open their
   card with a mouse only.
 - There are no skip links. Tab goes through every card, the bottom row and the side column's rows before it reaches
