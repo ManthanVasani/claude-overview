@@ -1,6 +1,6 @@
 'use strict';
 
-// fs is patched in the worker's own thread, which a test's patch cannot reach
+// a test's patch of fs cannot reach the worker's thread
 const fs = require('fs');
 const path = require('path');
 const { parentPort, workerData } = require('worker_threads');
@@ -46,7 +46,7 @@ fs.readSync = (fd, ...rest) => {
   parentPort.postMessage({ reads: ++reads });
   if (as === 'half') return readSync(fd, rest[0], rest[1], Math.max(1, rest[2] >> 1), rest[3]);
   if (as === 'empty') {
-    // a read that returns nothing leaves the buffer as it was, here full of line ends
+    // an empty read leaves the buffer as it was; line ends in it catch a reader that looks past what was read
     rest[0].fill(10);
     return 0;
   }
