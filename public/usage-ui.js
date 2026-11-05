@@ -138,12 +138,16 @@
     for (const i of marks) xl += '<text x="' + (L + i * slot + slot / 2).toFixed(1) + '" y="' + (H - 4) + '" class="ax" text-anchor="middle">' + esc(label(series[i].k)) + '</text>';
     return '<svg class="u-svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(METRICS.find((m) => m[0] === metric)[1]) + ' tokens per ' + (hourly ? 'hour' : 'day') + '">' + g + bars + xl + '</svg>';
   }
+  function unreadNote(n, low) {
+    return '<p class="u-note u-stale" title="The board\'s messages are in the terminal it runs in, or in overview.log when started with ./overview start">' + (n === 1 ? '1 transcript' : n.toLocaleString() + ' transcripts') + ' could not be read, so ' + low + ': the board\'s messages name ' + (n === 1 ? 'it' : 'them') + '</p>';
+  }
   function tile(label, value, hint) { return '<div class="u-tile" title="' + esc(hint) + '"><span>' + esc(label) + '</span><b>' + esc(value) + '</b></div>'; }
   function bar(v, max, c) { return '<span class="u-bar"><i style="width:' + (max ? (v / max) * 100 : 0).toFixed(1) + '%' + (c ? ';background:' + c : '') + '"></i></span>'; }
   function tokensHtml(d, width) {
     let h = seg('data-urange', RANGES, range);
     const p = d.progress;
     if (p && p.pending) h += '<p class="u-note u-stale">Still counting older transcripts: ' + (p.read / 1e9).toFixed(1) + ' of ' + (p.total / 1e9).toFixed(1) + ' GB read, so totals are low for now</p>';
+    if (p && p.uncounted) h += unreadNote(p.uncounted, 'totals are low');
     const t = d.totals;
     if (!t) return h + '<p class="u-note">Counting transcripts…</p>';
     h += '<div class="u-tiles">' +
@@ -202,10 +206,12 @@
     const w = d.waits;
     const p = d.progress;
     const behind = p && (p.pending || p.wread < p.read);
-    if (!w || (!w.totals[0] && !behind)) return '';
+    const unread = p && p.unreadable;
+    if (!w || (!w.totals[0] && !behind && !unread)) return '';
     const t = w.totals;
     let h = '<section class="p-sec"><h3>Cache written again</h3>';
     if (behind) h += '<p class="u-note u-stale">Still reading older transcripts for this: ' + (p.wread / 1e9).toFixed(1) + ' of ' + (p.total / 1e9).toFixed(1) + ' GB read, so it is low for now</p>';
+    if (unread) h += unreadNote(unread, 'it is low');
     if (w.from) h += '<p class="u-note">Counted from ' + esc(new Date(w.from + 'T12:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })) + ': older transcripts were deleted before this was counted</p>';
     if (t[0]) {
       const hint = 'The prompt cache expires when a session or agent makes no call for its lifetime, 5 minutes or 1 hour, and an account switch starts it again. The next reply then writes the whole prompt to it, at the write price instead of the read price.';

@@ -12,6 +12,15 @@ const { prompt, reply, result } = require('./helpers/claude-code');
 const MIN = 60000;
 const T0 = Date.parse('2026-11-04T10:00:00Z');
 const V1_KEYS = ['agent', 'alias', 'cwd', 'days', 'gone', 'hours', 'ino', 'mtime', 'off', 'recent', 'sid', 'size', 'title', 'tk', 'wait'];
+const SCANNER = fs.readFileSync(path.join(__dirname, '..', 'lib', 'usage-scan.js'), 'utf8');
+
+function setting(name) {
+  const m = new RegExp('^const ' + name + ' = (\\d+);$', 'm').exec(SCANNER);
+  assert.ok(m, name + ' is not a plain number in usage-scan.js');
+  return Number(m[1]);
+}
+// so the worker's next tick walks and reports
+const NEXT_WALK = { shift: Math.max(setting('WALK_BUSY_MS'), setting('WALK_IDLE_MS'), setting('REPORT_MS')) + 1 };
 
 const warm = (t, o) => reply(t, Object.assign({ write: 3000, read: 200000 }, o));
 const cold = (t, o) => reply(t, Object.assign({ write: 203000, read: 0 }, o));
@@ -36,17 +45,27 @@ function transcripts(f) {
 }
 
 // the waits file is written once the first pass is done
-function scan(f) {
+function scan(f, fail, opts) {
+  opts = opts || {};
   const before = fs.existsSync(f.waits) ? fs.statSync(f.waits).mtimeMs : 0;
+  const done = opts.done || ((p) => p.read === p.total && p.wread === p.total);
   return new Promise((resolve, reject) => {
-    const w = new Worker(path.join(__dirname, '..', 'lib', 'usage-scan.js'), { workerData: { root: f.root, index: f.index, waits: f.waits, seed: path.join(f.dir, 'no-seed.json') } });
+    const entry = fail ? path.join(__dirname, 'helpers', 'failing-reads.js') : path.join(__dirname, '..', 'lib', 'usage-scan.js');
+    const w = new Worker(entry, { workerData: { root: f.root, index: f.index, waits: f.waits, seed: path.join(f.dir, 'no-seed.json'), fail } });
     let last = null;
-    w.on('message', (m) => { if (m.progress) last = m; });
-    w.on('error', reject);
+    let stopped = false;
+    const seen = { notices: [], reads: 0, reports: [] };
+    w.on('message', (m) => {
+      if (m.progress) { last = m; seen.reports.push({ reads: seen.reads, progress: m.progress }); }
+      else if (m.notice) seen.notices.push(m.notice);
+      else if (m.reads) { seen.reads = m.reads; if (opts.onRead) opts.onRead(w, m.reads); }
+    });
+    w.on('error', (e) => { stopped = true; reject(e); });
     const until = Date.now() + 20000;
     (function poll() {
+      if (stopped) return;
       const p = last && last.progress;
-      if (p && p.read === p.total && p.wread === p.total && fs.existsSync(f.waits) && fs.statSync(f.waits).mtimeMs > before) w.terminate().then(() => resolve(last));
+      if (p && done(p) && fs.existsSync(f.waits) && fs.statSync(f.waits).mtimeMs > before && (!opts.ready || opts.ready(Object.assign({}, last, seen)))) w.terminate().then(() => resolve(Object.assign(last, seen)));
       else if (Date.now() > until) w.terminate().then(() => reject(new Error('the scan did not finish: ' + JSON.stringify(last && last.progress))));
       else setTimeout(poll, 50);
     })();
@@ -194,6 +213,367 @@ test('reading back for waits reports its progress to the end, past the part of i
     fs.writeFileSync(f.index, JSON.stringify({ v: 1, files: { [big]: done } }));
     const p = (await scan(f)).progress;
     assert.equal(p.wread, st.size);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+function unreadable(f) {
+  const bad = path.join(f.root, 'other', 'bad.jsonl');
+  write(bad, [prompt(T0, 'go'), warm(T0, { model: 'claude-bad' })]);
+  return bad;
+}
+
+// the first tick reads these and reports before the bad file's turn
+function ahead(f, bad) {
+  const files = [];
+  for (let i = 0; i < setting('SLICES_PER_TICK'); i++) {
+    files.push(path.join(f.root, 'proj', 'sid' + i + '.jsonl'));
+    write(files[i], [prompt(T0, 'go'), warm(T0)]);
+  }
+  const old = new Date(Date.now() - 864e5);
+  fs.utimesSync(bad, old, old);
+  return files;
+}
+
+test('a transcript that cannot be read is left out, and the rest are counted and saved', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    const bad = unreadable(f);
+    const m = await scan(f, { name: 'bad.jsonl', as: 'eio' });
+    const t = tally(m);
+    assert.deepEqual(t.causes, { you: 1, loop: 1 });
+    assert.equal(t.tokens[0], 4);
+    assert.equal(m.reads, 1);
+    assert.equal(m.progress.pending, 0);
+    assert.equal(m.progress.unreadable, 1);
+    assert.equal(m.progress.uncounted, 1);
+    assert.deepEqual(m.notices, ['Could not read ' + bad + ' for usage (EIO)']);
+    assert.equal(JSON.parse(fs.readFileSync(f.index, 'utf8')).files[bad].off, 0);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a transcript whose read fails after a report counted it as still to read is left out of the next report', async () => {
+  const f = folder();
+  try {
+    ahead(f, unreadable(f));
+    const m = await scan(f, { name: 'bad.jsonl', as: 'eio' });
+    assert.ok(m.reports.some((r) => !r.reads && r.progress.pending === 1));
+    assert.equal(m.reads, 1);
+    assert.equal(m.progress.pending, 0);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a transcript that still cannot be read is not counted as still to read between the next walk and its next read', async () => {
+  const f = folder();
+  try {
+    const newer = ahead(f, unreadable(f));
+    const m = await scan(f, { name: 'bad.jsonl', as: 'eio' }, {
+      onRead: (w, n) => {
+        if (n > 1) return;
+        // so the next walk queues them ahead of the bad file again
+        for (const p of newer) fs.appendFileSync(p, JSON.stringify(warm(T0 + MIN)[0]) + '\n');
+        w.postMessage(NEXT_WALK);
+      },
+      ready: (s) => s.reads === 2,
+    });
+    assert.equal(tally(m).tokens[0], 2 * newer.length);
+    const after = m.reports.filter((r) => r.reads);
+    assert.ok(after.length);
+    for (const r of after) assert.equal(r.progress.pending, 0);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a transcript whose read failed is read again at the next walk', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    unreadable(f);
+    const m = await scan(f, { name: 'bad.jsonl', as: 'eio', once: true }, {
+      onRead: (w) => w.postMessage(NEXT_WALK),
+      ready: (s) => tally(s).tokens[0] === 5,
+    });
+    assert.equal(m.reads, 1);
+    assert.equal(m.days[dayKey(T0)].m['claude-bad'][0], 1);
+    assert.equal(m.progress.unreadable, 0);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a transcript read again after a failed read is not left out, even with no replies in it', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    write(path.join(f.root, 'other', 'bad.jsonl'), [prompt(T0, 'go')]);
+    const m = await scan(f, { name: 'bad.jsonl', as: 'eio', once: true }, {
+      onRead: (w) => w.postMessage(NEXT_WALK),
+      ready: (s) => s.reads === 1 && s.progress.unreadable === 0,
+    });
+    assert.equal(m.progress.pending, 0);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a transcript whose read failed is not left out once it has nothing to read', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    const bad = unreadable(f);
+    const m = await scan(f, { name: 'bad.jsonl', as: 'eio' }, {
+      onRead: (w) => {
+        fs.truncateSync(bad, 0);
+        w.postMessage(NEXT_WALK);
+      },
+      ready: (s) => s.reads === 1 && s.progress.unreadable === 0,
+    });
+    assert.equal(tally(m).tokens[0], 4);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a transcript that reads shorter than its size is taken to end where the read stopped, and is not named as unreadable', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    const bad = unreadable(f);
+    const m = await scan(f, { name: 'bad.jsonl', as: 'empty' });
+    assert.equal(tally(m).tokens[0], 4);
+    assert.equal(m.reads, 1);
+    assert.equal(m.progress.unreadable, 0);
+    assert.equal(m.progress.uncounted, 0);
+    assert.deepEqual(m.notices, []);
+    const saved = JSON.parse(fs.readFileSync(f.index, 'utf8')).files[bad];
+    assert.deepEqual([saved.off, saved.size], [0, 0]);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a transcript cut shorter while it is read is counted from what is left, and not named as unreadable', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    const bad = path.join(f.root, 'other', 'bad.jsonl');
+    const first = warm(T0, { model: 'claude-bad' });
+    write(bad, [first, warm(T0 + MIN, { model: 'claude-bad' })]);
+    const m = await scan(f, { name: 'bad.jsonl', as: 'cut', once: true, cut: Buffer.byteLength(JSON.stringify(first[0]) + '\n') });
+    assert.equal(m.reads, 1);
+    assert.equal(m.days[dayKey(T0)].m['claude-bad'][0], 1);
+    assert.equal(m.progress.unreadable, 0);
+    assert.deepEqual(m.notices, []);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a transcript cut shorter than what was counted before it is opened is counted again from what is left', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    const bad = path.join(f.root, 'other', 'bad.jsonl');
+    const first = warm(T0, { model: 'claude-bad' });
+    write(bad, [first, warm(T0 + MIN, { model: 'claude-bad' })]);
+    await scan(f);
+    fs.appendFileSync(bad, JSON.stringify(warm(T0 + 2 * MIN, { model: 'claude-bad' })[0]) + '\n');
+    const m = await scan(f, { name: 'bad.jsonl', as: 'cut-open', once: true, cut: Buffer.byteLength(JSON.stringify(first[0]) + '\n') });
+    assert.equal(m.reads, 1);
+    assert.equal(m.days[dayKey(T0)].m['claude-bad'][0], 1);
+    assert.equal(tally(m).tokens[0], 5);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a transcript cut inside a line while it is read waits for the line to be finished, and is not named as unreadable', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    const bad = path.join(f.root, 'other', 'bad.jsonl');
+    write(bad, [warm(T0, { model: 'claude-bad' })]);
+    const m = await scan(f, { name: 'bad.jsonl', as: 'cut', once: true, cut: 10 }, { done: (p) => p.pending === 0 });
+    assert.equal(m.reads, 1);
+    assert.equal(m.days[dayKey(T0)].m['claude-bad'], undefined);
+    assert.equal(m.progress.unreadable, 0);
+    assert.deepEqual(m.notices, []);
+    const r = JSON.parse(fs.readFileSync(f.index, 'utf8')).files[bad];
+    assert.deepEqual([r.off, r.size, r.wait], [0, 10, 10]);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a transcript rewritten to its old size while it is read is read on at the next walk, and not named as unreadable', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    const bad = path.join(f.root, 'other', 'bad.jsonl');
+    const first = warm(T0, { model: 'claude-bad' });
+    write(bad, [first, warm(T0 + MIN, { model: 'claude-bad' })]);
+    const m = await scan(f, { name: 'bad.jsonl', as: 'regrow', once: true, cut: Buffer.byteLength(JSON.stringify(first[0]) + '\n') }, {
+      onRead: (w) => w.postMessage(NEXT_WALK),
+      ready: (s) => s.days[dayKey(T0)].m['claude-bad']?.[0] === 2,
+    });
+    assert.equal(m.reads, 1);
+    assert.equal(m.days[dayKey(T0)].m['claude-bad'][0], 2);
+    assert.equal(m.progress.unreadable, 0);
+    assert.deepEqual(m.notices, []);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a transcript that cannot be opened is named and left out, not taken for deleted', async () => {
+  const f = folder();
+  try {
+    const { session } = transcripts(f);
+    const bad = unreadable(f);
+    await scan(f);
+    fs.appendFileSync(bad, JSON.stringify(warm(T0 + MIN, { model: 'claude-bad' })[0]) + '\n');
+    fs.appendFileSync(session, JSON.stringify(warm(T0 + 71 * MIN, { ttl: '1h' })[0]) + '\n');
+    const m = await scan(f, { name: 'bad.jsonl', as: 'eacces' });
+    assert.equal(m.reads, 1);
+    assert.equal(m.days[dayKey(T0)].m['claude-bad'][0], 1);
+    assert.equal(m.progress.unreadable, 1);
+    assert.equal(m.progress.uncounted, 1);
+    assert.deepEqual(m.notices, ['Could not read ' + bad + ' for usage (EACCES)']);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a transcript removed before it is opened is not named as unreadable', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    unreadable(f);
+    const m = await scan(f, { name: 'bad.jsonl', as: 'enoent' });
+    assert.equal(m.reads, 1);
+    assert.equal(m.progress.unreadable, 0);
+    assert.deepEqual(m.notices, []);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a transcript that cannot be read again for its waits keeps its tokens and is left out of the waits count', async () => {
+  const f = folder();
+  try {
+    const { session } = transcripts(f);
+    const bad = unreadable(f);
+    await scan(f);
+    const saved = JSON.parse(fs.readFileSync(f.waits, 'utf8'));
+    delete saved.files[bad];
+    fs.writeFileSync(f.waits, JSON.stringify(saved));
+    fs.appendFileSync(session, JSON.stringify(warm(T0 + 71 * MIN, { ttl: '1h' })[0]) + '\n');
+    const m = await scan(f, { name: 'bad.jsonl', as: 'eio' });
+    assert.equal(tally(m).tokens[0], 6);
+    assert.equal(m.reads, 1);
+    assert.equal(m.progress.unreadable, 1);
+    assert.equal(m.progress.uncounted, 0);
+    assert.deepEqual(m.notices, ['Could not read ' + bad + ' for usage (EIO)']);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a transcript found empty while it is read again for its waits is counted again from the start in the next report', async () => {
+  const f = folder();
+  try {
+    const bad = unreadable(f);
+    const newer = ahead(f, bad);
+    await scan(f);
+    const saved = JSON.parse(fs.readFileSync(f.waits, 'utf8'));
+    delete saved.files[bad];
+    fs.writeFileSync(f.waits, JSON.stringify(saved));
+    // so the first tick reports before the bad file's turn
+    for (const p of newer) fs.appendFileSync(p, JSON.stringify(warm(T0 + MIN)[0]) + '\n');
+    const m = await scan(f, { name: 'bad.jsonl', as: 'empty' });
+    assert.equal(tally(m).tokens[0], 2 * newer.length);
+    assert.equal(m.days[dayKey(T0)].m['claude-bad'], undefined);
+    assert.equal(m.reads, 1);
+    assert.equal(m.progress.unreadable, 0);
+    assert.deepEqual(m.notices, []);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a transcript cut shorter while it is read again for its waits is counted again from what is left', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    const bad = path.join(f.root, 'other', 'bad.jsonl');
+    const first = warm(T0, { model: 'claude-bad' });
+    write(bad, [first, warm(T0 + MIN, { model: 'claude-bad' })]);
+    await scan(f);
+    const saved = JSON.parse(fs.readFileSync(f.waits, 'utf8'));
+    delete saved.files[bad];
+    fs.writeFileSync(f.waits, JSON.stringify(saved));
+    const m = await scan(f, { name: 'bad.jsonl', as: 'cut', once: true, cut: Buffer.byteLength(JSON.stringify(first[0]) + '\n') });
+    assert.equal(m.days[dayKey(T0)].m['claude-bad'][0], 1);
+    assert.equal(tally(m).tokens[0], 5);
+    assert.equal(m.reads, 1);
+    assert.deepEqual(m.notices, []);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a transcript emptied before its waits were read is counted again from the start and saved, and read again when written back', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    const bad = path.join(f.root, 'other', 'bad.jsonl');
+    fs.mkdirSync(path.dirname(bad), { recursive: true });
+    // an unfinished last line, so the file waits at its size
+    const text = JSON.stringify(warm(T0, { model: 'claude-bad' })[0]) + '\n{"type":"assistant"';
+    fs.writeFileSync(bad, text);
+    const pending = { done: (p) => p.pending === 0 };
+    await scan(f, null, pending);
+    const saved = JSON.parse(fs.readFileSync(f.waits, 'utf8'));
+    delete saved.files[bad];
+    fs.writeFileSync(f.waits, JSON.stringify(saved));
+    fs.truncateSync(bad, 0);
+    const m = await scan(f);
+    assert.equal(m.days[dayKey(T0)].m['claude-bad'], undefined);
+    assert.deepEqual(JSON.parse(fs.readFileSync(f.index, 'utf8')).files[bad].days, {});
+    fs.writeFileSync(bad, text);
+    const back = await scan(f, null, pending);
+    assert.equal(back.days[dayKey(T0)].m['claude-bad'][0], 1);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('a read that returns part of what was asked goes on reading', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    unreadable(f);
+    const m = await scan(f, { name: 'bad.jsonl', as: 'half' });
+    assert.equal(tally(m).tokens[0], 5);
+    assert.ok(m.reads > 1);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('an error in a read that is not a file error stops the scan', async () => {
+  const f = folder();
+  try {
+    transcripts(f);
+    unreadable(f);
+    await assert.rejects(scan(f, { name: 'bad.jsonl', as: 'bug' }), /out of range/);
   } finally {
     fs.rmSync(f.dir, { recursive: true, force: true });
   }
