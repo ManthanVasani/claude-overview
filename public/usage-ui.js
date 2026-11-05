@@ -196,7 +196,7 @@
   function times(n) { return n === 1 ? '1 time' : n.toLocaleString() + ' times'; }
   function dollars(x) { return '$' + (x >= 100 ? Math.round(x).toLocaleString() : x.toFixed(2)); }
   // index into a [times, tokens, dollars, tokens with no price] row
-  function price(a) { return a[3] < a[1] ? ' · about ' + dollars(a[2]) : ''; }
+  function price(a) { return a[3] ? '' : ' · about ' + dollars(a[2]); }
   function waitsHtml(d) {
     const w = d.waits;
     const p = d.progress;

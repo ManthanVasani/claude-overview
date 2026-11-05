@@ -91,6 +91,33 @@ test('with nothing running in the foreground, what woke the next call is the cau
   assert.equal(feed([warm(T0, { stop: 'end_turn' }), quoting, cold(T0 + 20 * MIN)])[0].cause, 'other');
 });
 
+test('a tool that came back while the cache was still warm is not what the next call waited on', () => {
+  const npm = { tools: [['Bash', { command: 'npm test' }]] };
+  assert.equal(feed([warm(T0, npm), result(T0 + 30000, 'x'), cold(T0 + 10 * MIN)])[0].cause, 'other');
+  assert.equal(feed([warm(T0, npm), result(T0 + 5 * MIN - 1, 'x'), cold(T0 + 10 * MIN)])[0].cause, 'other');
+  assert.equal(feed([warm(T0, npm), result(T0 + 5 * MIN, 'x'), cold(T0 + 10 * MIN)])[0].cause, 'command');
+  const stopped = [warm(T0, Object.assign({ ttl: '1h' }, npm)), result(T0 + MIN, 'x', null, 'interrupted'), prompt(T0 + 70 * MIN, 'next')];
+  assert.equal(feed([...stopped, cold(T0 + 70 * MIN, { ttl: '1h' })])[0].cause, 'you');
+  assert.equal(feed([warm(T0, npm), result(T0 + 1000, 'x'), warm(T0 + 2000, npm), cold(T0 + 10 * MIN)])[0].cause, 'command');
+  // of calls made together, the last to come back decides
+  const two = { tools: [['Bash', { command: 'ls' }], ['Bash', { command: 'npm test' }]] };
+  assert.equal(feed([warm(T0, two), result(T0 + 1000, 'a'), result(T0 + 9 * MIN, 'b'), cold(T0 + 9 * MIN)])[0].cause, 'command');
+  assert.equal(feed([warm(T0, two), result(T0 + 9 * MIN, 'b'), result(T0 + 1000, 'a'), cold(T0 + 9 * MIN)])[0].cause, 'command');
+  const at = (t) => new Date(t).toISOString();
+  const real = '{"parentUuid":"p","isSidechain":false,"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"x","content":"ok"}]},"uuid":"u","timestamp":"' + at(T0 + 30000) + '","toolUseResult":{"task":{"timestamp":"' + at(T0 + 9 * MIN) + '"}}}';
+  assert.equal(feed([warm(T0, npm), real, cold(T0 + 10 * MIN)])[0].cause, 'other');
+});
+
+test('only a line the call received is a result or a wake, not a request body, a queue or an attachment that quotes one', () => {
+  const at = (t) => new Date(t).toISOString();
+  const tag = '<task-notification>\n<task-id>b1</task-id>\n</task-notification>';
+  const queued = { type: 'queue-operation', operation: 'enqueue', timestamp: at(T0 + 10 * MIN), content: tag };
+  const attached = { parentUuid: 'p', attachment: { type: 'queued_command', prompt: tag }, type: 'attachment', timestamp: at(T0 + 10 * MIN) };
+  for (const l of [queued, attached]) assert.equal(feed([warm(T0, { stop: 'end_turn' }), l, prompt(T0 + 20 * MIN, 'next'), cold(T0 + 20 * MIN)])[0].cause, 'you');
+  const body = { type: 'api-request-blob', timestamp: at(T0 + 30000), body: { messages: [{ role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: 'ok' }] }] } };
+  assert.equal(feed([warm(T0, { tools: [['Bash', { command: 'npm test' }]] }), body, cold(T0 + 10 * MIN)])[0].cause, 'command');
+});
+
 test('an agent transcript is read whole, while side-chain lines in a session transcript are skipped', () => {
   const side = (lines) => lines.map((l) => Object.assign({}, l, { isSidechain: true }));
   assert.equal(feed([side(warm(T0)), side(cold(T0 + 10 * MIN))], true).length, 1);
@@ -135,9 +162,12 @@ test('each priced model is matched by its own row, and a newer one is left unpri
   for (const m of ['claude-opus-5-7', 'claude-sonnet-5-8', 'claude-fable-5-2', 'claude-haiku-4-5-20251001', 'claude-opus-4-7', 'us.anthropic.claude-opus-5-5']) assert.equal(per(m), null, m);
 });
 
-test('a rewrite after an account switch is counted at any wait, before what it waited on', () => {
+test('a rewrite after an account switch is put down to it while the cache was still warm, and to the wait after that', () => {
   assert.deepEqual(feed([warm(T0), account(T0 + 30000), cold(T0 + MIN)]).map((m) => m.cause), ['account']);
-  assert.deepEqual(feed([warm(T0, { tools: [['Bash', { command: 'sleep 600' }]] }), account(T0 + MIN), cold(T0 + 10 * MIN)]).map((m) => m.cause), ['account']);
+  const sleep = { tools: [['Bash', { command: 'sleep 600' }]] };
+  assert.deepEqual(feed([warm(T0, sleep), account(T0 + MIN), cold(T0 + 5 * MIN - 1)]).map((m) => m.cause), ['account']);
+  assert.deepEqual(feed([warm(T0, sleep), account(T0 + MIN), cold(T0 + 5 * MIN)]).map((m) => m.cause), ['loop']);
+  assert.deepEqual(feed([warm(T0, { ttl: '1h' }), account(T0 + MIN), prompt(T0 + 2 * 60 * MIN, 'next'), cold(T0 + 2 * 60 * MIN, { ttl: '1h' })]).map((m) => m.cause), ['you']);
   assert.equal(feed([warm(T0), account(T0 + 30000), warm(T0 + MIN)]).length, 0);
   // the session's own first sign-in comes before its first call
   assert.equal(feed([account(T0 - 1000), warm(T0), cold(T0 + MIN)]).length, 0);
@@ -147,6 +177,9 @@ test('a rewrite after an account switch is counted at any wait, before what it w
 test('a call that waited on a permission prompt was waiting on you', () => {
   const run = (source, inner) => feed([warm(T0, { tools: [['Bash', { command: 'npm test' }]] }), decided(T0 + 9 * MIN, source, inner), cold(T0 + 10 * MIN)])[0].cause;
   assert.equal(run('user_temporary'), 'you');
+  // a prompt answered while the cache was still warm did not keep the call waiting
+  const early = feed([warm(T0, { tools: [['AskUserQuestion', { questions: [] }]] }), decided(T0 + MIN, 'user_temporary'), cold(T0 + 10 * MIN)]);
+  assert.equal(early[0].cause, 'other');
   assert.equal(run('user_reject'), 'you');
   assert.equal(run('user_permanent'), 'command');
   assert.equal(run('config'), 'command');

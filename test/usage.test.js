@@ -116,6 +116,17 @@ test('the Usage panel shows the cost of rewritten cache only for models it has a
   assert.doesNotMatch(text(await panel(today)), /written again/);
 });
 
+test('a cause or session row that holds tokens with no price shows no cost, as its dollars would cover only part of it', async () => {
+  const { all } = await replies;
+  const mixed = JSON.parse(JSON.stringify(all));
+  mixed.waits.causes[0][1][3] = 100000;
+  mixed.waits.sessions[0].a[3] = 100000;
+  const t = text(await panel(mixed));
+  assert.match(t, / Waiting for you 1 time 500k A sleep or poll loop 2 times · about \$1\.95 406k /);
+  assert.match(t, /sid1 mostly waiting for you · 3 times /);
+  assert.doesNotMatch(t, /sid1 mostly waiting for you · 3 times · about/);
+});
+
 test('while the waits are read back, the Usage panel says its count is low for now', async () => {
   const { today } = await replies;
   const behind = Object.assign({}, today, { progress: { total: 2e9, read: 2e9, wread: 1e9, pending: 0 } });
