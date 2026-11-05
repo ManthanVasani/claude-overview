@@ -12,9 +12,11 @@
     try { return el.matches(':focus-visible'); } catch (e) { return true; }
   }
 
-  // the handlers read what a control opens from these
+  // a node's href and data-* say what it opens or stands for
   function same(el) {
-    return Array.from(el.attributes).filter((a) => a.name === 'href' || a.name.indexOf('data-') === 0).map((a) => a.name + '=' + a.value).join(' ');
+    let id = '';
+    for (const a of el.attributes) if (a.name === 'href' || a.name.indexOf('data-') === 0) id += a.name + '=' + a.value + ' ';
+    return id;
   }
 
   // replacing a node loses the focus inside it

@@ -208,7 +208,7 @@ test('a row that a redraw turns into another item is a new node, so a click pres
   assert.deepEqual(panel.querySelectorAll('li').map((li) => li.getAttribute('data-focus')), ['a:9', 'a:1', 'a:2']);
   const kept = panel.querySelectorAll('li');
   focus.redraw(rows(['a:9', 'a:1', 'a:2']).replace('>a:9<', '>a:9 again<'));
-  assert.deepEqual(panel.querySelectorAll('li'), kept);
+  panel.querySelectorAll('li').forEach((li, i) => assert.equal(li, kept[i]));
 });
 
 test('a redraw that removes or rewrites a control the mouse focused leaves focus on the page and the scroll where it was', () => {
