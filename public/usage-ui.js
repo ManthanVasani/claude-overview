@@ -167,17 +167,63 @@
     }
     return '<section class="p-sec"><h3>By model</h3>' + h + '</div></section>';
   }
+  function sessionRow(s, v, max, more) {
+    const link = s.live && window.OV && OV.name('s:' + s.sid);
+    const title = s.title || s.name || s.sid.slice(0, 8);
+    const sub = [more, s.live ? (s.name && s.name !== title ? s.name + ' · ' : '') + 'live' : '', s.cwd, s.last && !s.live ? when(s.last) : ''].filter(Boolean).join(' · ');
+    return '<li' + (link ? ' data-focus="s:' + esc(s.sid) + '" title="Show on the map"' : '') + '><span class="nm"><b>' + esc(title) + '</b><span>' + esc(sub) + '</span></span>' + bar(v, max) + '<span class="v">' + fmt(v) + '</span></li>';
+  }
   function sessionsHtml(d) {
     if (!d.sessions || !d.sessions.length) return '';
     const max = d.sessions[0].a[2];
-    const rows = d.sessions.map((s) => {
-      const link = s.live && window.OV && OV.name('s:' + s.sid);
-      const title = s.title || s.name || s.sid.slice(0, 8);
-      const sub = [s.live ? (s.name && s.name !== title ? s.name + ' · ' : '') + 'live' : '', s.cwd, s.last && !s.live ? when(s.last) : ''].filter(Boolean).join(' · ');
-      return '<li' + (link ? ' data-focus="s:' + esc(s.sid) + '" title="Show on the map"' : '') + '><span class="nm"><b>' + esc(title) + '</b><span>' + esc(sub) + '</span></span>' + bar(s.a[2], max) + '<span class="v">' + fmt(s.a[2]) + '</span></li>';
-    }).join('');
+    const rows = d.sessions.map((s) => sessionRow(s, s.a[2], max)).join('');
     return '<section class="p-sec"><h3>Top sessions · output</h3><ul class="u-rows">' + rows + '</ul></section>';
   }
+
+  // ---------- waits ----------
+
+  const CAUSES = {
+    account: 'an account switch',
+    loop: 'a sleep or poll loop',
+    command: 'a long command',
+    background: 'a background task',
+    agents: 'its agents',
+    you: 'waiting for you',
+    resumed: 'a message from its session',
+    other: 'something else',
+  };
+  function cause(c) { return CAUSES[c] || c; }
+  function times(n) { return n === 1 ? '1 time' : n.toLocaleString() + ' times'; }
+  function dollars(x) { return '$' + (x >= 100 ? Math.round(x).toLocaleString() : x.toFixed(2)); }
+  function about(x) { return x < 0.005 ? 'under $0.01' : 'about ' + dollars(x); }
+  // index into a [times, tokens, dollars, tokens with no price] row
+  function price(a) { return a[3] ? '' : ' · ' + about(a[2]); }
+  function waitsHtml(d) {
+    const w = d.waits;
+    const p = d.progress;
+    const behind = p && (p.pending || p.wread < p.read);
+    if (!w || (!w.totals[0] && !behind)) return '';
+    const t = w.totals;
+    let h = '<section class="p-sec"><h3>Cache written again</h3>';
+    if (behind) h += '<p class="u-note u-stale">Still reading older transcripts for this: ' + (p.wread / 1e9).toFixed(1) + ' of ' + (p.total / 1e9).toFixed(1) + ' GB read, so it is low for now</p>';
+    if (w.from) h += '<p class="u-note">Counted from ' + esc(new Date(w.from + 'T12:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })) + ': older transcripts were deleted before this was counted</p>';
+    if (t[0]) {
+      const hint = 'The prompt cache expires when a session or agent makes no call for its lifetime, 5 minutes or 1 hour, and an account switch starts it again. The next reply then writes the whole prompt to it, at the write price instead of the read price.';
+      let cost = ': ' + about(t[2]) + ' more than reading them, at API list prices';
+      if (t[3] === t[1]) cost = ', on models with no price here';
+      else if (t[3]) cost += ', for ' + Math.min(99, Math.max(1, Math.floor((1 - t[3] / t[1]) * 100))) + '% of them; the rest are on models with no price here';
+      h += '<p class="u-note" title="' + esc(hint) + '">' + esc(times(t[0])) + ' a reply wrote ' + fmt(t[1]) + ' tokens of cache again' + cost + '</p>';
+      const max = w.causes[0][1][1];
+      h += '<ul class="u-rows">' + w.causes.map(([c, a]) => '<li><span class="nm"><b>' + esc(cause(c)[0].toUpperCase() + cause(c).slice(1)) + '</b><span>' + esc(times(a[0]) + price(a)) + '</span></span>' + bar(a[1], max) + '<span class="v">' + fmt(a[1]) + '</span></li>').join('') + '</ul>';
+    }
+    h += '</section>';
+    if (w.sessions.length) {
+      const max = w.sessions[0].a[1];
+      h += '<section class="p-sec"><h3>Top sessions · cache written again</h3><ul class="u-rows">' + w.sessions.map((s) => sessionRow(s, s.a[1], max, 'mostly ' + cause(s.cause) + ' · ' + times(s.a[0]) + price(s.a))).join('') + '</ul></section>';
+    }
+    return h;
+  }
+
   function foldersHtml(d) {
     if (!d.projects || !d.projects.length) return '';
     const max = d.projects[0][1][2];
@@ -202,7 +248,7 @@
     if (!data) { html = h + '<p class="u-note">Loading…</p>'; return; }
     h += '<section class="p-sec"><h3>Accounts</h3>' + accountsHtml(data.accounts, now) + '</section>';
     h += '<section class="p-sec"><h3>Tokens</h3>' + tokensHtml(data, width) + '</section>';
-    h += modelsHtml(data) + sessionsHtml(data) + foldersHtml(data);
+    h += waitsHtml(data) + modelsHtml(data) + sessionsHtml(data) + foldersHtml(data);
     html = h;
   }
   function fetchNow() {

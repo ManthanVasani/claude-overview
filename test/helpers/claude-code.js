@@ -18,6 +18,17 @@ function said(t, text) {
   return { type: 'assistant', timestamp: iso(t), message: { id: 'm' + (++seq), role: 'assistant', model: 'm', stop_reason: 'end_turn', content: [{ type: 'text', text: text || 'done' }] } };
 }
 
+// one line per content block, each repeating the reply's usage, as Claude Code writes them
+function reply(t, opts) {
+  const o = Object.assign({ model: 'claude-opus-5-5', write: 0, read: 0, ttl: '5m', tools: [], stop: 'tool_use' }, opts);
+  const id = o.id || 'm' + (++seq);
+  const split = o.ttl === 'none' ? undefined : { ephemeral_5m_input_tokens: o.ttl === '5m' ? o.write : 0, ephemeral_1h_input_tokens: o.ttl === '1h' ? o.write : 0 };
+  const usage = { input_tokens: 2, cache_creation_input_tokens: o.write, cache_read_input_tokens: o.read, output_tokens: 50, cache_creation: split };
+  if (o.speed) usage.speed = o.speed;
+  const blocks = o.tools.length ? o.tools.map(([name, input]) => ({ type: 'tool_use', id: 'tu' + (++seq), name, input: input || {} })) : [{ type: 'text', text: 'done' }];
+  return blocks.map((b) => ({ type: 'assistant', timestamp: iso(t), message: { id, role: 'assistant', model: o.model, stop_reason: o.stop, usage, content: [b] } }));
+}
+
 function result(t, id, toolUseResult, text) {
   const r = { type: 'user', timestamp: iso(t), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: text || 'ok' }] } };
   if (toolUseResult) r.toolUseResult = toolUseResult;
@@ -59,4 +70,4 @@ function toolShellLine(afterEval, opts) {
   return toolShellArgv(afterEval, opts).join(' ') + ' ';
 }
 
-module.exports = { prompt, call, said, result, launched, notification, PERMISSION, SCREEN, quote, SCRUB, toolScript, toolShellArgv, toolShellLine };
+module.exports = { prompt, call, said, reply, result, launched, notification, PERMISSION, SCREEN, quote, SCRUB, toolScript, toolShellArgv, toolShellLine };

@@ -68,7 +68,7 @@ contrast theme or person using assistive technology has tried it yet.
 - In the 0.3.2 release on npm, opening a card's details does not move focus to them, and while a session is busy,
   focus inside them is lost each time they refresh.
 - These rows open another item with a mouse only: Started by, the child agents, Touched most, Who touched it and Every
-  touch in a card's details, and Top sessions in Usage.
+  touch in a card's details, and the two Top sessions lists in Usage.
 - The New session and Session died notices that pop up disappear after 8 seconds, cannot be focused, and open their
   card with a mouse only.
 - There are no skip links. Tab goes through every card, the bottom row and the side column's rows before it reaches
