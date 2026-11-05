@@ -222,13 +222,16 @@ test('an agent whose call to start background agents comes back only after the c
 });
 
 test('a waits state an older server saved is read on', () => {
-  const s = Object.assign(waits.newState(), { id: 'm-old', t: T0, model: 'claude-opus-5-5', ttl: 300000 });
-  delete s.bg;
+  const older = (o) => {
+    const s = Object.assign(waits.newState(), { id: 'm-old', t: T0, model: 'claude-opus-5-5', ttl: 5 * MIN }, o);
+    delete s.bg;
+    return s;
+  };
   const rest = reply(T0, { id: 'm-old', write: 3000, read: 200000, tools: [['Agent', { prompt: 'look', run_in_background: true }, 'a1']] });
-  assert.equal(feed([rest, result(T0 + 12 * MIN, 'a1'), cold(T0 + 12 * MIN + 2000)], true, s)[0].cause, 'agents');
-  const done = Object.assign(waits.newState(), { id: 'm-old', t: T0, model: 'claude-opus-5-5', ttl: 300000 });
-  delete done.bg;
-  assert.equal(feed([result(T0 + 12 * MIN, 'a1'), cold(T0 + 12 * MIN + 2000)], true, done)[0].cause, 'other');
+  assert.equal(feed([rest, result(T0 + 12 * MIN, 'a1'), cold(T0 + 12 * MIN + 2000)], true, older())[0].cause, 'agents');
+  for (const [back, cause] of [[12 * MIN, 'command'], [MIN, 'other']]) {
+    assert.equal(feed([result(T0 + back, 'c1'), cold(T0 + 12 * MIN + 2000)], true, older({ fg: 'command' }))[0].cause, cause, String(back));
+  }
 });
 
 test('a session is never put down to waiting on agents it started in the background', () => {
@@ -236,4 +239,6 @@ test('a session is never put down to waiting on agents it started in the backgro
     const start = { tools: [[name, { prompt: 'look', run_in_background: true }, 'a1']] };
     assert.equal(feed([warm(T0, start), result(T0 + 12 * MIN, 'a1'), cold(T0 + 12 * MIN + 2000)])[0].cause, 'other', name);
   }
+  const quoted = { tools: [['Agent', { prompt: 'look', run_in_background: 'true' }, 'a1'], ['Bash', { command: 'npm test' }, 'c1']] };
+  assert.equal(feed([warm(T0, quoted), result(T0 + 1000, 'a1'), result(T0 + 9 * MIN, 'c1'), cold(T0 + 9 * MIN)])[0].cause, 'command');
 });
