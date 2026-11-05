@@ -23,6 +23,10 @@ fs.openSync = (p, ...rest) => {
     parentPort.postMessage({ reads: ++reads });
     throw as === 'eacces' ? systemError('EACCES', -13, 'open') : systemError('ENOENT', -2, 'open');
   }
+  if (ours && as === 'cut-open' && !reads) {
+    parentPort.postMessage({ reads: ++reads });
+    fs.truncateSync(String(p), cut);
+  }
   const fd = openSync(p, ...rest);
   if (ours) fds.set(fd, String(p));
   return fd;
@@ -33,7 +37,7 @@ fs.closeSync = (fd) => {
 };
 fs.readSync = (fd, ...rest) => {
   if (regrow && fds.has(fd)) {
-    // regrown after the read hit the cut end and before the scanner's second fstat
+    // regrown after the read hit the cut end
     fs.writeFileSync(fds.get(fd), regrow);
     regrow = null;
     return 0;
@@ -41,7 +45,11 @@ fs.readSync = (fd, ...rest) => {
   if (!fds.has(fd) || (once && reads)) return readSync(fd, ...rest);
   parentPort.postMessage({ reads: ++reads });
   if (as === 'half') return readSync(fd, rest[0], rest[1], Math.max(1, rest[2] >> 1), rest[3]);
-  if (as === 'empty') return 0;
+  if (as === 'empty') {
+    // a read that returns nothing leaves the buffer as it was, here full of line ends
+    rest[0].fill(10);
+    return 0;
+  }
   if (as === 'cut' || as === 'regrow') {
     if (as === 'regrow') regrow = fs.readFileSync(fds.get(fd));
     fs.truncateSync(fds.get(fd), cut);
