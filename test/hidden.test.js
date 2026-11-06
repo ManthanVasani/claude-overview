@@ -198,6 +198,7 @@ test('a hidden session stays on the board, marked, with the sessions it started,
   assert.deepEqual([v.held('a'), v.held('c1'), v.held('b')], [true, true, false]);
   assert.deepEqual(ids(h.view(snap, false, 'b'), ['a', 'c1']), ['a', 'c1']);
   assert.deepEqual(ids(h.view(snap, false, 'not-on-the-board'), ['a', 'c1']), ['a', 'c1']);
+  assert.deepEqual(ids(h.view(board([session('c1'), session('b')], [], { c1: 'a' }), false, 'a'), ['a', 'c1']), []);
   assert.equal(h.view(snap, true, 'a').held('a'), false);
   assert.equal(h.view(Object.assign({}, snap, { attention: [{ level: 'needs', sid: 'a', quiet: false }] }), false, 'a').held('a'), false);
 });

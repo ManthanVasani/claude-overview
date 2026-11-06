@@ -143,7 +143,7 @@ touching, and each tool call as it happens. The timeline runs along the bottom.
 | Shift + F | Full screen. So does the button at the bottom right. |
 | S | Hides or shows the right-hand column, in a window wide enough to have one. |
 | Active only | Hides finished agents, shells and workflows. |
-| Hide session, in a session's details | Takes the session and the sessions it started off the map, the timeline, the right-hand column and the counts. It stays while its details are open, comes back while it waits for you, and sends no alert when it finishes its turn. **N hidden**, beside the counts, shows the hidden sessions again; Unhide session puts one back. |
+| Hide session, in a session's details | Takes the session and the sessions it started off the map, the timeline, the right-hand column and the counts. Opened again from **N hidden**, beside the counts, it stays while its details are open. It comes back while it waits for you, and sends no alert when it finishes its turn. Unhide session puts it back, together with any hidden session that started it. |
 | Click a card | Shows what it is doing, what it has touched and what failed. Esc closes it. |
 | The timeline | Every tool call over the last 15m, 1h or 3h. Drag it to look further back; Live, or L, comes back to now. T folds it away. |
 | Usage, or U | Token totals by day, model, session and folder, how often a reply wrote the prompt cache again after a wait or an account switch and what that cost, and the plan limits of each cswap account. |

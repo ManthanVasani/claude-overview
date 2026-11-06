@@ -902,7 +902,7 @@
     hiddenBtn.title = peek ? 'Hide them again' : 'Show the sessions you hid';
     // the focus of a button that hides falls to the page; the sessions it counted are why it hid
     const to = handOff && [...was, ...hid.marked].map((id) => nodeEls.get('s:' + id)).find((el) => el && el.isConnected && !el.closest('.leaving'));
-    if (to) to.focus();
+    if (to) to.focus({ preventScroll: true });
   }
   if (hidden) {
     hiddenBtn.addEventListener('click', () => {
@@ -1157,6 +1157,7 @@
     // a hidden session stays on the board while details in it are open
     const keep = sessionOf(selected || restoreOpen);
     const was = hid.counted;
+    const lost = world.contains(document.activeElement) ? document.activeElement.closest('.node') : null;
     hid = hidden ? hidden.view(snap, peek, keep) : NO_HIDDEN;
     if (peek && !hid.count) {
       peek = false;
@@ -1207,6 +1208,7 @@
     applyHover();
     renderHud();
     paintHidden(was);
+    if (lost && lost.closest('.leaving') && hid.concealed(sessionOf(lost.d && lost.d.id)) && !hiddenBtn.hidden) hiddenBtn.focus();
     if (restoreOpen && (restoreOpen === 'usage' || lanes.length || hid.gone.size)) {
       const id = restoreOpen;
       restoreOpen = null;

@@ -83,7 +83,7 @@
     const loud = new Set();
     for (const a of (snap && snap.attention) || []) if (!a.quiet && a.level === 'needs') loud.add(root.get(String(a.sid)));
     for (const s of all) if (s.alive && s.state === 'needs-you' && !s.headless) loud.add(root.get(String(s.id)));
-    const kept = open != null && byId.has(String(open)) ? root.get(String(open)) : null;
+    const kept = open == null ? null : byId.has(String(open)) ? root.get(String(open)) : rootOf(open, startedBy);
     const back = (r) => loud.has(r) || r === kept;
     const away = new Map();
     const awayHidden = (sid) => {
