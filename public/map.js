@@ -65,7 +65,7 @@
   let selected = null;
   let hoverId = null;
   let onlyActive = store(ACTIVE_KEY) === '1';
-  const NO_HIDDEN = { count: 0, gone: new Set(), marked: new Set(), concealed: () => false, held: () => false };
+  const NO_HIDDEN = { count: 0, counted: new Set(), gone: new Set(), marked: new Set(), concealed: () => false, held: () => false };
   let hid = NO_HIDDEN;
   let peek = false;
   let shownTotals = null;
@@ -892,10 +892,14 @@
   paintFit();
 
   function sessionOf(id) { return id && /^(s|a|w|wa|t):/.test(id) ? id.split(':')[1] : null; }
-  function paintHidden() {
+  function paintHidden(was) {
+    const handOff = !hid.count && !hiddenBtn.hidden && document.activeElement === hiddenBtn;
     hiddenBtn.hidden = !hid.count;
     hiddenBtn.innerHTML = '<b>' + hid.count + '</b>hidden';
     hiddenBtn.setAttribute('aria-pressed', peek ? 'true' : 'false');
+    // the focus of a button that hides falls to the page; the sessions it counted are why it hid
+    const to = handOff && [...was, ...hid.marked].map((id) => nodeEls.get('s:' + id)).find(Boolean);
+    if (to) to.focus();
   }
   if (hidden) {
     hiddenBtn.addEventListener('click', () => {
@@ -1149,6 +1153,7 @@
     if (!snap) return;
     // the details being read stay open when their hidden session goes quiet
     const keep = sessionOf(selected || restoreOpen);
+    const was = hid.counted;
     hid = hidden ? hidden.view(snap, peek, keep) : NO_HIDDEN;
     if (peek && !hid.count) {
       peek = false;
@@ -1197,7 +1202,7 @@
     noticeChanges(all);
     applyHover();
     renderHud();
-    paintHidden();
+    paintHidden(was);
     if (restoreOpen && (restoreOpen === 'usage' || lanes.length)) {
       const id = restoreOpen;
       restoreOpen = null;

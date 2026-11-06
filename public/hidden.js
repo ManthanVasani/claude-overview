@@ -5,12 +5,8 @@
   // a resumed session keeps its id
   const KEEP_MS = 7 * 86400e3;
   const SEEN_MS = 3600e3;
-  // longer than the timeline keeps a step
-  const LINK_MS = 4 * 3600e3;
 
   let ids = new Map();
-  // the server links a session to the one that started it only while both run, and its steps outlast both
-  const links = new Map();
   let unsaved = false;
   const subs = [];
   load();
@@ -22,11 +18,7 @@
     try { v = JSON.parse(raw); } catch (e) { /* corrupt */ }
     ids = new Map();
     if (!v || typeof v !== 'object') return;
-    for (const k of Object.keys(v)) {
-      const x = v[k];
-      if (typeof x === 'number') ids.set(k, x);
-      else if (Array.isArray(x) && typeof x[0] === 'string' && typeof x[1] === 'number') links.set(k, [x[0], x[1]]);
-    }
+    for (const k of Object.keys(v)) if (typeof v[k] === 'number') ids.set(k, v[k]);
   }
   // another tab can have changed the list since this one read it, but a list this one could not save is the newer
   function reload() { if (!unsaved) load(); }
@@ -35,7 +27,6 @@
     fn();
     const o = {};
     for (const [k, t] of ids) o[k] = t;
-    for (const [k, l] of links) if (!ids.has(k)) o[k] = l;
     try {
       localStorage.setItem(KEY, JSON.stringify(o));
       unsaved = false;
@@ -44,40 +35,26 @@
   function changed() { for (const fn of subs) fn(); }
 
   function has(id) { return ids.has(String(id)); }
+  function within(id, snap) { return !!ids.size && rootOf(id, (snap && snap.startedBy) || {}) !== null; }
   function set(id, on) {
     id = String(id);
     edit(() => { if (on) ids.set(id, Date.now()); else ids.delete(id); });
     changed();
   }
 
-  function parentOf(id, byId) {
-    const s = byId.get(id);
-    if (s && s.parentSid && byId.has(String(s.parentSid))) return String(s.parentSid);
-    return links.has(id) ? links.get(id)[0] : null;
-  }
-  function hiddenAbove(id, byId) {
+  // the topmost, so the sessions on the board above a shown one are shown too
+  function rootOf(id, startedBy) {
+    let r = null;
     const seen = new Set();
-    for (let x = String(id); x && !seen.has(x); x = parentOf(x, byId)) {
-      if (ids.has(x)) return x;
+    for (let x = String(id); x && !seen.has(x); x = startedBy[x]) {
+      if (ids.has(x)) r = x;
       seen.add(x);
     }
-    return null;
+    return r;
   }
 
   function refresh(byId, now) {
     let saved = false;
-    for (const [id, s] of byId) {
-      const l = links.get(id);
-      const p = s.parentSid && byId.has(String(s.parentSid)) ? String(s.parentSid) : l && l[0];
-      if (!p || (l && l[0] === p && now - l[1] <= SEEN_MS)) continue;
-      links.set(id, [p, now]);
-      saved = true;
-    }
-    for (const [id, l] of links) {
-      if (byId.has(id) || now - l[1] <= LINK_MS) continue;
-      links.delete(id);
-      saved = true;
-    }
     for (const [id, at] of ids) {
       if (byId.has(id) ? now - at <= SEEN_MS : now - at <= KEEP_MS) continue;
       saved = true;
@@ -90,13 +67,14 @@
   // keep is the session whose details are open.
   function view(snap, peek, keep) {
     const all = (snap && snap.sessions) || [];
+    const startedBy = (snap && snap.startedBy) || {};
     const byId = new Map(all.map((s) => [String(s.id), s]));
     if (all.length) {
       const now = Date.now();
       // the save can first read a list another tab wrote, so the changes are made again on it
       if (refresh(byId, now)) edit(() => refresh(byId, now));
     }
-    const root = new Map(all.map((s) => [String(s.id), hiddenAbove(s.id, byId)]));
+    const root = new Map(all.map((s) => [String(s.id), rootOf(s.id, startedBy)]));
     const loud = new Set();
     for (const a of (snap && snap.attention) || []) if (!a.quiet) loud.add(root.get(String(a.sid)));
     for (const s of all) if (s.alive && s.state === 'needs-you' && !s.headless) loud.add(root.get(String(s.id)));
@@ -105,24 +83,25 @@
     const away = new Map();
     const gone = new Set();
     const marked = new Set();
-    const groups = new Set();
+    const counted = new Set();
     for (const s of all) {
       const id = String(s.id);
       const r = root.get(id);
       if (!r) continue;
-      groups.add(r);
+      if (!loud.has(r)) counted.add(r);
       if (!back(r) && !peek) gone.add(id);
-      else if (!(s.parentSid && byId.has(String(s.parentSid)))) marked.add(id);
+      else if (ids.has(id) || !(s.parentSid && byId.has(String(s.parentSid)))) marked.add(id);
     }
     return {
-      count: [...groups].filter((r) => !loud.has(r)).length,
+      count: counted.size,
+      counted,
       gone,
       marked,
       concealed(sid) {
         if (!ids.size) return false;
         sid = String(sid);
         if (byId.has(sid)) return gone.has(sid);
-        if (!away.has(sid)) away.set(sid, hiddenAbove(sid, byId));
+        if (!away.has(sid)) away.set(sid, rootOf(sid, startedBy));
         const r = away.get(sid);
         return !!r && !peek && !back(r);
       },
@@ -156,9 +135,9 @@
     if (e.key !== KEY && e.key !== null) return;
     const was = [...ids.keys()].sort().join();
     reload();
-    // another tab also saves the times and the links, which this one takes from the same snapshots
+    // another tab keeps the times fresh, which changes nothing on the board
     if ([...ids.keys()].sort().join() !== was) changed();
   });
 
-  window.OVHidden = { has, set, view, totals, on(fn) { subs.push(fn); } };
+  window.OVHidden = { has, within, set, view, totals, on(fn) { subs.push(fn); } };
 })();

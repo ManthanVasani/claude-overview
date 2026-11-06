@@ -48,17 +48,18 @@ function page(hiddenIds) {
   for (const id of hiddenIds) ctx.OVHidden.set(id, true);
   vm.runInContext(read('alerts.js'), ctx);
   return {
-    snap: (sessions, attention) => ctx.OVAlerts.onSnap({ boot: 1, sessions, attention: attention || [] }),
+    snap: (sessions, attention, startedBy) => ctx.OVAlerts.onSnap({ boot: 1, sessions, attention: attention || [], startedBy }),
     settle: () => timers.splice(0).forEach((fn) => fn()),
     sent,
   };
 }
 const session = (id, state, o) => Object.assign({ id, name: id.toUpperCase(), alive: true, state, since: 5 }, o);
 
-test('a hidden session sends no Your turn alert, and one on the board does', () => {
+test('a hidden session and the sessions it started send no Your turn alert, and one on the board does', () => {
   const p = page(['a']);
-  p.snap([session('a', 'working'), session('b', 'working')]);
-  p.snap([session('a', 'your-turn'), session('b', 'your-turn')]);
+  const startedBy = { c: 'a' };
+  p.snap([session('a', 'working'), session('b', 'working'), session('c', 'working')], [], startedBy);
+  p.snap([session('a', 'your-turn'), session('b', 'your-turn'), session('c', 'your-turn')], [], startedBy);
   p.settle();
   assert.deepEqual(p.sent, ['Your turn: B']);
 });
