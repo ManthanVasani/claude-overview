@@ -65,7 +65,7 @@
   let selected = null;
   let hoverId = null;
   let onlyActive = store(ACTIVE_KEY) === '1';
-  const NO_HIDDEN = { count: 0, gone: new Set(), marked: new Map(), concealed: () => false };
+  const NO_HIDDEN = { count: 0, gone: new Set(), marked: new Set(), concealed: () => false };
   let hid = NO_HIDDEN;
   let peek = false;
   let shownTotals = null;
@@ -891,8 +891,12 @@
   // not setFollow: a saved free view must outlast a reload that never gets a snapshot
   paintFit();
 
+  function sessionOf(id) { return id && /^(s|a|w|wa|t):/.test(id) ? id.split(':')[1] : null; }
   function paintHidden() {
+    const had = document.activeElement === hiddenBtn;
     hiddenBtn.hidden = !hid.count;
+    // the open details are the nearest place for the focus of a button that leaves
+    if (had && hiddenBtn.hidden && selected && panel.querySelector('.p-hide')) panel.querySelector('.p-hide').focus();
     hiddenBtn.innerHTML = '<b>' + hid.count + '</b>hidden';
     hiddenBtn.setAttribute('aria-pressed', peek ? 'true' : 'false');
   }
@@ -1146,10 +1150,12 @@
 
   function render() {
     if (!snap) return;
-    hid = hidden ? hidden.view(snap, peek) : NO_HIDDEN;
+    // the details being read stay open when their hidden session goes quiet
+    const keep = sessionOf(selected || restoreOpen);
+    hid = hidden ? hidden.view(snap, peek, keep) : NO_HIDDEN;
     if (peek && !hid.count) {
       peek = false;
-      hid = hidden.view(snap, false);
+      hid = hidden.view(snap, false, keep);
     }
     const all = snap.sessions || [];
     const kept = hid.gone.size ? all.filter((s) => !hid.concealed(s.id)) : all;
@@ -1201,11 +1207,6 @@
       if (id === 'usage') { if (window.OVUsage) window.OVUsage.open(); }
       else if (id.indexOf('r:') === 0 || rawIndex.has(id)) openPanel(id);
       else store(OPEN_KEY, '');
-    }
-    if (selected && /^(s|a|w|wa|t):/.test(selected) && hid.concealed(selected.split(':')[1])) {
-      closePanel();
-      // a closed panel keeps the focus on a control nobody can see
-      if (panel.contains(document.activeElement)) document.activeElement.blur();
     }
     if (selected) renderPanel();
     if (window.OVLive) window.OVLive.onSnap(snap);
@@ -1599,6 +1600,7 @@
     selected = id;
     restoreOpen = null;
     store(OPEN_KEY, id);
+    if (hid.concealed(sessionOf(id))) render();
     panel.classList.add('open');
     document.body.classList.add('panel-open');
     for (const el of world.querySelectorAll('.node.sel')) el.classList.remove('sel');
@@ -1613,6 +1615,7 @@
     if (window.OVUsage) window.OVUsage.onSelect();
   }
   function closePanel() {
+    const sid = sessionOf(selected);
     const refocus = panelFocus.closing(nodeEls.get(selected));
     selected = null;
     restoreOpen = null;
@@ -1625,14 +1628,23 @@
     if (window.OVLive) window.OVLive.onSelect();
     if (window.OVUsage) window.OVUsage.onSelect();
     refocus();
+    if (sid && hid.marked.size) {
+      const focused = document.activeElement;
+      render();
+      const now = document.activeElement;
+      // the card that took the focus back can leave with the panel, and a leaving lane stays until it has faded
+      if (hid.concealed(sid) && (now !== focused || (now && now.closest && now.closest('.leaving')))) hiddenBtn.focus();
+    }
   }
   panel.addEventListener('click', (e) => {
     if (e.target.closest('[data-close]')) { closePanel(); return; }
     const hb = e.target.closest('[data-hide]');
     if (hb) {
-      const on = !hidden.has(hb.getAttribute('data-hide'));
-      hidden.set(hb.getAttribute('data-hide'), on);
-      if (on && !selected) hiddenBtn.focus();
+      const id = hb.getAttribute('data-hide');
+      const on = !hidden.has(id);
+      if (on) closePanel();
+      hidden.set(id, on);
+      if (on && hid.concealed(id)) hiddenBtn.focus();
       return;
     }
     const res = e.target.closest('[data-res]');

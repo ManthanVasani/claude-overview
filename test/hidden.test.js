@@ -16,7 +16,7 @@ function page(store, clock) {
   const on = {};
   const localStorage = store.blocked
     ? { getItem() { throw new Error('denied'); }, setItem() { throw new Error('denied'); } }
-    : { getItem: (k) => (k in store.data ? store.data[k] : null), setItem: (k, v) => { store.data[k] = String(v); } };
+    : { getItem: (k) => (k in store.data ? store.data[k] : null), setItem: (k, v) => { if (store.full) throw new Error('quota'); store.data[k] = String(v); } };
   const window = { addEventListener(type, fn) { on[type] = fn; } };
   vm.runInNewContext(SRC, { window, localStorage, Date: { now: () => clock.t } });
   return { h: window.OVHidden, storage: (key) => on.storage({ key }) };
@@ -25,7 +25,7 @@ const session = (id, o) => Object.assign({ id, name: id, alive: true, state: 'wo
 const ids = (v, list) => list.filter((id) => v.concealed(id));
 // the script's objects come from its own context, whose prototypes a strict compare would tell apart
 const plain = (x) => JSON.parse(JSON.stringify(x));
-const marked = (v) => plain([...v.marked]);
+const marked = (v) => [...v.marked].sort();
 
 test('a hidden session leaves the board with every session it started, and the others stay', () => {
   const { h } = page({ data: {} }, { t: 0 });
@@ -38,7 +38,7 @@ test('a hidden session leaves the board with every session it started, and the o
   assert.deepEqual(ids(h.view({ sessions: [session('a'), session('c1', { parentSid: 'a' })], attention: [] }), ['a', 'c1']), []);
 });
 
-test('a hidden session stays on the board, marked, while it or a session it started would send a desktop alert', () => {
+test('a hidden session stays on the board, marked, while it would send a desktop alert or a session in it waits for you', () => {
   const { h } = page({ data: {} }, { t: 0 });
   h.set('a', true);
   const sessions = (o) => [session('a'), session('c1', Object.assign({ parentSid: 'a' }, o))];
@@ -53,7 +53,7 @@ test('a hidden session stays on the board, marked, while it or a session it star
   for (const [name, list, attention, gone] of cases) {
     const v = h.view({ sessions: list, attention });
     assert.deepEqual(ids(v, ['a', 'c1']), gone ? ['a', 'c1'] : [], name);
-    assert.deepEqual(marked(v), gone ? [] : [['a', true]], name);
+    assert.deepEqual(marked(v), gone ? [] : ['a'], name);
     assert.equal(v.count, gone ? 1 : 0, name);
   }
 });
@@ -64,7 +64,7 @@ test('showing the hidden sessions brings each one back, marked, and keeps the co
   h.set('b', true);
   const v = h.view({ sessions: [session('a'), session('c1', { parentSid: 'a' }), session('b'), session('d')], attention: [{ level: 'error', sid: 'b', quiet: false }] }, true);
   assert.deepEqual(ids(v, ['a', 'c1', 'b', 'd']), []);
-  assert.deepEqual(marked(v), [['a', false], ['b', true]]);
+  assert.deepEqual(marked(v), ['a', 'b']);
   assert.equal(v.count, 1);
 });
 
@@ -77,6 +77,72 @@ test('the steps of a hidden session that has left the board stay off the timelin
   assert.deepEqual(ids(h.view({ sessions: [session('b')], attention: [] }, true), ['a', 'c1']), []);
   const back = h.view({ sessions: [session('a')], attention: [{ level: 'error', sid: 'a', quiet: false }] });
   assert.deepEqual(ids(back, ['a', 'c1']), []);
+});
+
+test('the sessions a hidden session started stay off the timeline once they leave the board, after a reload and in a new tab', () => {
+  const store = { data: {} };
+  const clock = { t: 0 };
+  const one = page(store, clock);
+  one.h.set('a', true);
+  one.h.view({ sessions: [session('a'), session('c1', { parentSid: 'a' }), session('c2', { parentSid: 'a' }), session('b')], attention: [] });
+  const two = page(store, clock);
+  assert.deepEqual(ids(two.h.view({ sessions: [session('a'), session('c2', { parentSid: 'a' })], attention: [] }), ['a', 'c1', 'c2']), ['a', 'c1', 'c2']);
+  assert.deepEqual(ids(page(store, clock).h.view({ sessions: [session('b')], attention: [] }), ['a', 'c1', 'c2', 'b']), ['a', 'c1', 'c2']);
+  two.h.set('a', false);
+  assert.deepEqual(ids(page(store, clock).h.view({ sessions: [session('b')], attention: [] }), ['a', 'c1', 'c2']), []);
+});
+
+test("a session hidden after a session it started has left the board keeps that session's steps off the timeline too", () => {
+  const { h } = page({ data: {} }, { t: 0 });
+  h.view({ sessions: [session('a'), session('c1', { parentSid: 'a' })], attention: [] });
+  h.view({ sessions: [session('a')], attention: [] });
+  h.set('a', true);
+  assert.deepEqual(ids(h.view({ sessions: [session('a')], attention: [] }), ['a', 'c1']), ['a', 'c1']);
+});
+
+test('a started session away from the board longer than the timeline keeps a step is forgotten, and only those of hidden sessions are saved', () => {
+  const store = { data: {} };
+  const clock = { t: 0 };
+  const { h } = page(store, clock);
+  const saved = () => JSON.parse(store.data[KEY]);
+  h.set('a', true);
+  const both = [session('a'), session('c1', { parentSid: 'a' }), session('b'), session('d1', { parentSid: 'b' })];
+  h.view({ sessions: both, attention: [] });
+  assert.deepEqual(saved(), { a: 0, c1: ['a', 0] });
+  clock.t = HOUR / 2;
+  h.view({ sessions: both, attention: [] });
+  assert.deepEqual(saved(), { a: 0, c1: ['a', 0] });
+  clock.t = 4 * HOUR;
+  h.view({ sessions: [session('a')], attention: [] });
+  assert.deepEqual(saved(), { a: 4 * HOUR, c1: ['a', 0] });
+  clock.t = 4 * HOUR + 1;
+  const v = h.view({ sessions: [session('a')], attention: [] });
+  assert.deepEqual(saved(), { a: 4 * HOUR });
+  assert.deepEqual(ids(v, ['a', 'c1']), ['a']);
+});
+
+test('a session hidden on its own stays hidden when the session that started it is hidden and then shown again', () => {
+  const store = { data: {} };
+  const clock = { t: 0 };
+  const { h } = page(store, clock);
+  h.set('c1', true);
+  h.set('a', true);
+  h.view({ sessions: [session('a'), session('c1', { parentSid: 'a' })], attention: [] });
+  const next = page(store, clock).h;
+  next.set('a', false);
+  assert.deepEqual([next.has('a'), next.has('c1')], [false, true]);
+});
+
+test('the session whose details are open stays on the board, marked, with the sessions it started', () => {
+  const { h } = page({ data: {} }, { t: 0 });
+  h.set('a', true);
+  const snap = { sessions: [session('a'), session('c1', { parentSid: 'a' }), session('b')], attention: [] };
+  const v = h.view(snap, false, 'c1');
+  assert.deepEqual(ids(v, ['a', 'c1', 'b']), []);
+  assert.deepEqual(marked(v), ['a']);
+  assert.equal(v.count, 0);
+  assert.deepEqual(ids(h.view(snap, false, 'b'), ['a', 'c1']), ['a', 'c1']);
+  assert.deepEqual(ids(h.view(snap, false, 'not-on-the-board'), ['a', 'c1']), ['a', 'c1']);
 });
 
 test('the list outlives a reload, and the tabs of the board share it, each redrawing only when the list changes', () => {
@@ -126,12 +192,14 @@ test('an id away from the board for a week is forgotten, never on a snapshot wit
   assert.deepEqual([h.has('a'), h.has('b')], [false, true]);
 });
 
-test('with the storage blocked, a hide lasts as long as the page', () => {
-  const { h } = page({ blocked: true }, { t: 0 });
-  h.set('a', true);
-  h.set('b', true);
-  assert.deepEqual([h.has('a'), h.has('b')], [true, true]);
-  assert.deepEqual(ids(h.view({ sessions: [session('a'), session('b'), session('c')], attention: [] }), ['a', 'b', 'c']), ['a', 'b']);
+test('with the storage blocked or full, a hide lasts as long as the page', () => {
+  for (const store of [{ blocked: true }, { data: {}, full: true }]) {
+    const { h } = page(store, { t: 0 });
+    h.set('a', true);
+    h.set('b', true);
+    assert.deepEqual([h.has('a'), h.has('b')], [true, true]);
+    assert.deepEqual(ids(h.view({ sessions: [session('a'), session('b'), session('c')], attention: [] }), ['a', 'b', 'c']), ['a', 'b']);
+  }
 });
 
 test('a stored list the page cannot read counts as empty, and an entry without a time is left out', () => {

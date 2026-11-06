@@ -462,7 +462,7 @@ test('the page loads panel-focus.js before map.js, draws, opens and closes the p
   assert.match(map, /const panelFocus = window\.OVPanelFocus \? window\.OVPanelFocus\(panel, viewport\) : \{ redraw\(h\) \{ panel\.innerHTML = h; \}, opened\(\) \{\}, closing\(\) \{ return \(\) => \{\}; \} \};/);
   assert.match(map, /if \(panel\.html !== html\) \{\s+const top = panel\.scrollTop;\s+const toTop = panelFocus\.redraw\(html\);\s+panel\.html = html;\s+panel\.setAttribute\('aria-label', selected === 'usage' \? 'Usage' : 'Details'\);\s+if \(!toTop\) panel\.scrollTop = top;/);
   assert.match(map, /function openPanel\(id\) \{[^}]*?renderPanel\(\);\s+panelFocus\.opened\(\);/);
-  assert.match(map, /function closePanel\(\) \{\s+const refocus = panelFocus\.closing\(nodeEls\.get\(selected\)\);\s+selected = null;[^}]*?OVUsage\.onSelect\(\);\s+refocus\(\);\s+\}/);
+  assert.match(map, /function closePanel\(\) \{\s+const sid = sessionOf\(selected\);\s+const refocus = panelFocus\.closing\(nodeEls\.get\(selected\)\);\s+selected = null;[^}]*?OVUsage\.onSelect\(\);\s+refocus\(\);\s+if \(sid && hid\.marked\.size\) \{/);
   assert.ok(page.indexOf('src="/panel-focus.js"') > 0 && page.indexOf('src="/panel-focus.js"') < page.indexOf('src="/map.js"'));
   assert.match(page, /<aside class="panel"[^>]* aria-label="[^"]+"/);
   assert.match(page, /\.p-x:focus-visible \{ outline: 2px solid/);
