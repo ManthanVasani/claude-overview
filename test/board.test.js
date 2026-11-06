@@ -4,12 +4,21 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const test = require('node:test');
+const vm = require('vm');
 const { Board, runningToolShell, sleep, SERVER_TEST_MS } = require('./helpers/board');
 const { prompt, call, said, result, launched, notification, PERMISSION, SCREEN, quote, SCRUB } = require('./helpers/claude-code');
-const { AGENT_FIRST_BYTES, BACKFILL_CHUNK, BACKFILL_PER_FILE, BACKFILL_PER_RUN, SESSION_FIRST_BYTES } = require('../lib/constants');
+const { AGENT_FIRST_BYTES, BACKFILL_CHUNK, BACKFILL_PER_FILE, BACKFILL_PER_RUN, SESSION_FIRST_BYTES, POLL_MS, STARTER_KEEP_MS } = require('../lib/constants');
+const { noteStarters } = require('../lib/sessions');
 
 // a line the board reads as a tool shell, kept running by its sleep
 const body = (word) => 'sleep 600; : /x/shell-snapshots/s.sh eval ' + word + ' && pwd -P >| /dev/null';
+
+// what the page counts in the header while it hides a session
+function pageTotals(snap) {
+  const window = { addEventListener() {} };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'public', 'hidden.js'), 'utf8'), { window, localStorage: { getItem: () => null, setItem() {} } });
+  return JSON.parse(JSON.stringify(window.OVHidden.totals(snap.sessions, snap.attention)));
+}
 
 test('the board reads each session from Claude Code status, on the /proc path', { timeout: SERVER_TEST_MS, skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
   const T0 = Date.now() - 60000;
@@ -38,6 +47,8 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   const lateStopMeta = b.agent('stop-late', 'l1', { description: 'Look later', agentType: 'general-purpose', toolUseId: 'toolSL' }, [prompt(T0 + 2000), call(Date.now() - 200, 'WebFetch', { url: 'https://example.com/' })]);
   b.session('bg-wait', PERMISSION, [prompt(T0), call(Date.now() - 100, 'Bash', { command: 'make serve', description: 'Serve it', run_in_background: true })]);
   b.session('old-version', { status: 'busy', version: '2.1.283' }, [prompt(Date.now() - 30000), call(Date.now() - 25000, 'Bash', { command: 'make old' })]);
+  // its process has already exited, so the header counts an ended session and the problem row it leaves
+  b.session('gone', {}, [prompt(T0), said(T0 + 1000)], b.spawn('true', []));
   // a permission hook runs as a child of the Claude process while the call waits
   b.session('hook', PERMISSION, [prompt(Date.now() - 3000), call(Date.now() - 1000, 'Bash', { command: 'make hooked', description: 'Hooked' })], b.spawn('sh', ['-c', 'sleep 600 & wait']));
   b.session('screen-turn-ends', { status: 'busy' }, [prompt(T0), call(T0 + 1000, 'Bash', { command: 'make long', description: 'Long' }, 'tuE')]);
@@ -206,6 +217,7 @@ test('the board reads each session from Claude Code status, on the /proc path', 
   snap = await b.until(spawned + 6000);
 
   await check('a child that is not a tool shell beside three calls: no tool shell is listed as a background command', () => assert.deepEqual(view('phantom').shells || [], []));
+  await check('the page counts the header as the server does', () => assert.deepEqual(pageTotals(snap), snap.totals));
   await check('background shells the transcript does not name: each shows its own command', () => {
     assert.deepEqual((view('unknown-bg').shells || []).map((x) => x.desc).sort(), ["$ build --tag 'v1' < /dev/null", '$ deploy']);
   });
@@ -319,4 +331,42 @@ test('the board keeps sessions whose transcripts it cannot read, and leaves off 
     assert.equal(b.errors.split('EISDIR').length - 1, 1, b.errors);
     assert.match(b.errors, /cannot read \S*agent-d1\.jsonl \(EISDIR\)/);
   });
+});
+
+test('a session started from another keeps who started it after that one ends, and not once it runs again on its own', { timeout: SERVER_TEST_MS, skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
+  const T0 = Date.now() - 60000;
+  const b = new Board('started-', { startedAt: T0 });
+  t.after(() => b.stop());
+  const pidFile = path.join(b.dir, 'child.pid');
+  const starter = b.spawn('sh', ['-c', 'sleep 600 & echo $! > "$0"; wait', pidFile]);
+  while (!(fs.existsSync(pidFile) && fs.readFileSync(pidFile, 'utf8').trim())) await sleep(20);
+  const lines = [prompt(T0), said(T0 + 1000)];
+  const by = b.session('starter', { status: 'busy' }, lines, starter);
+  const sid = b.session('started', { status: 'busy' }, lines, { pid: Number(fs.readFileSync(pidFile, 'utf8')) });
+  await b.start();
+  let snap = await b.waitFor('the started session under its starter', (s) => (b.view(s, 'started') || {}).parentSid === by);
+  assert.deepEqual(snap.startedBy, { [sid]: by });
+  process.kill(starter.pid, 'SIGKILL');
+  snap = await b.waitFor('its starter gone', (s) => b.view(s, 'started') && !b.view(s, 'started').parentSid);
+  assert.deepEqual(snap.startedBy, { [sid]: by });
+  b.restart('started', { status: 'busy' });
+  snap = await b.waitFor('its new process', (s) => (b.view(s, 'started') || {}).pid === b.sessions.started.pid);
+  assert.deepEqual(snap.startedBy, {});
+});
+
+test('who started a session is kept while it or a session it started is on the board, until its steps leave every page, and not for a new process of it', () => {
+  const K = STARTER_KEEP_MS;
+  const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'live.js'), 'utf8');
+  const held = Function('return ' + page.match(/const HIST_MS = ([^;]+);/)[1])() + Number(page.match(/now\(\) - HIST_MS - ([^;]+);/)[1]);
+  assert.ok(K >= held + POLL_MS, 'a page keeps a step for ' + held + ' ms');
+  const known = new Map();
+  const c = (o) => Object.assign({ id: 'c', pid: 7, alive: true }, o);
+  const d = { id: 'd', pid: 9, alive: true };
+  assert.deepEqual(noteStarters(known, [c({ parentSid: 'p' })], 0), { c: 'p' });
+  assert.deepEqual(noteStarters(known, [c({ alive: false })], 2 * K), { c: 'p' });
+  assert.deepEqual(noteStarters(known, [], 3 * K), { c: 'p' });
+  assert.deepEqual(noteStarters(known, [], 3 * K + 1), {});
+  noteStarters(known, [c({ parentSid: 'p' }), Object.assign({ parentSid: 'c' }, d)], 0);
+  assert.deepEqual(noteStarters(known, [d], 2 * K), { c: 'p', d: 'c' });
+  assert.deepEqual(noteStarters(known, [c({ pid: 8 }), d], 2 * K + 1), { d: 'c' });
 });

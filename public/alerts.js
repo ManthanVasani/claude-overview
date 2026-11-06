@@ -98,6 +98,7 @@
         const now = latest && (latest.sessions || []).find((x) => x.id === s.id);
         // on a your-turn session the server sets a reason only when you interrupted it
         if (!now || now.state !== 'your-turn' || now.parentSid || now.headless || now.reason) return;
+        if (window.OVHidden && window.OVHidden.within(now.id, latest)) return;
         // the server keeps the last thing said, which can be from an earlier turn
         const said = now.said && now.said.text && now.said.at >= (now.turnStartedAt || 0) ? now.said.text : 'It is waiting for your next message';
         if (prefs.turns && armed()) notify('turn:' + s.id + ':' + now.since, 'Your turn: ' + now.name, said, 's:' + s.id);

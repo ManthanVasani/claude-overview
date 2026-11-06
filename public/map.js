@@ -33,8 +33,9 @@
   const viewport = $('viewport');
   const world = $('world');
   const panel = $('panel');
-  // a server still running from before an upgrade serves this page but not panel-focus.js
+  // a server started before an upgrade serves this page but not the scripts added since
   const panelFocus = window.OVPanelFocus ? window.OVPanelFocus(panel, viewport) : { redraw(h) { panel.innerHTML = h; }, opened() {}, closing() { return () => {}; } };
+  const hidden = window.OVHidden || null;
   const alertsEl = $('alerts');
   const hudText = $('hud-text');
   const mark = $('mark');
@@ -42,8 +43,10 @@
   const hudEl = $('hud');
   const ctrlEl = document.querySelector('.ctrl');
   const emptyEl = $('empty');
+  const NO_SESSIONS = emptyEl.textContent;
   const toastsEl = $('toasts');
   const activeBtn = $('only-active');
+  const hiddenBtn = $('hidden-btn');
   const fitBtn = $('fit');
   const pctBtn = $('zoom-pct');
   const fullBtn = $('full-screen');
@@ -63,6 +66,10 @@
   let selected = null;
   let hoverId = null;
   let onlyActive = store(ACTIVE_KEY) === '1';
+  const NO_HIDDEN = { count: 0, counted: new Set(), gone: new Set(), marked: new Set(), key: '', concealed: () => false, held: () => false };
+  let hid = NO_HIDDEN;
+  let peek = false;
+  let shownTotals = null;
   let view = { x: MARGIN, y: MARGIN, k: 1 };
   let restoreView = store(VIEW_KEY) === 'free' ? readJson(VIEW_AT_KEY) : null;
   let follow = restoreView ? null : store(VIEW_KEY) === 'top' ? 'top' : 'fit';
@@ -885,6 +892,30 @@
   // not setFollow: a saved free view must outlast a reload that never gets a snapshot
   paintFit();
 
+  function sessionOf(id) { return id && /^(s|a|w|wa|t):/.test(id) ? id.split(':')[1] : null; }
+  function paintHidden(was) {
+    const handOff = !hid.count && !hiddenBtn.hidden && document.activeElement === hiddenBtn;
+    hiddenBtn.hidden = !hid.count;
+    hiddenBtn.innerHTML = '<b>' + hid.count + '</b>hidden';
+    hiddenBtn.setAttribute('aria-label', hid.count + ' hidden');
+    hiddenBtn.setAttribute('aria-pressed', peek ? 'true' : 'false');
+    hiddenBtn.title = peek ? 'Hide them again' : 'Show the sessions you hid';
+    // the focus of a button that hides falls to the page; the sessions it counted are why it hid
+    const to = handOff && [...was, ...hid.marked].map((id) => nodeEls.get('s:' + id)).find((el) => el && el.isConnected && !el.closest('.leaving'));
+    if (to) to.focus({ preventScroll: true });
+  }
+  if (hidden) {
+    hiddenBtn.addEventListener('click', () => {
+      peek = !peek;
+      packW = 0;
+      render();
+    });
+    hidden.on(() => {
+      packW = 0;
+      render();
+    });
+  }
+
   // ---------- card markup ----------
 
   function sessionAct(s) {
@@ -939,14 +970,14 @@
           '<div class="hd">' + icon(st) + '<span class="ttl">' + esc(x.name) + '</span>' + chip(st) + '</div>' +
           actLine(sessionAct(x), wraps(n)) +
           '<div class="line"><span class="k">Asked</span>' + esc(flat(x.prompt) || '—') + '</div>' +
-          '<div class="meta">' + joinMeta([x.branch, prs, model(x.model), x.ctx ? tok(x.ctx) + ' context' : '', x.alive ? '' : 'pid ' + x.pid]) + '</div>' +
+          '<div class="meta">' + (hid.marked.has(String(x.id)) ? '<span class="badge">hidden</span> ' : '') + joinMeta([x.branch, prs, model(x.model), x.ctx ? tok(x.ctx) + ' context' : '', x.alive ? '' : 'pid ' + x.pid]) + '</div>' +
           '<div class="foot"><div class="spark"></div><span class="cnt">' + esc(runningCounts(x)) + '</span></div></div>';
       }
       case 'child':
         return '<div class="card child" title="' + esc(x.name) + '">' +
           '<div class="hd">' + icon(st) + '<span class="ttl">' + esc(x.name) + '</span><span class="badge">session</span></div>' +
           actLine(sessionAct(x), wraps(n)) +
-          '<div class="meta">' + joinMeta([model(x.model), x.ctx ? tok(x.ctx) + ' context' : '', x.cwd]) + '</div></div>';
+          '<div class="meta">' + (hid.marked.has(String(x.id)) ? '<span class="badge">hidden</span> ' : '') + joinMeta([model(x.model), x.ctx ? tok(x.ctx) + ' context' : '', x.cwd]) + '</div></div>';
       case 'agent':
         return '<div class="card agent" title="' + esc(x.desc) + '">' +
           '<div class="hd">' + icon(st) + '<span class="ttl">' + esc(x.desc) + '</span><span class="rt">' + spanOf(x) + '</span></div>' +
@@ -1066,7 +1097,7 @@
       }
     }
     el.d = n;
-    el.setAttribute('aria-label', (n.kind === 'more' ? n.data.label : (n.data.name || n.data.desc || n.data.label || '') + ', ' + (LABEL[st] || st)));
+    el.setAttribute('aria-label', (n.kind === 'more' ? n.data.label : (n.data.name || n.data.desc || n.data.label || '') + ', ' + (LABEL[st] || st)) + ((n.kind === 'session' || n.kind === 'child') && hid.marked.has(String(n.data.id)) ? ', hidden' : ''));
   }
 
   function renderLane(el, L) {
@@ -1123,20 +1154,32 @@
 
   function render() {
     if (!snap) return;
+    // a hidden session stays on the board while details in it are open
+    const keep = sessionOf(selected || restoreOpen);
+    const was = hid.counted;
+    const lost = world.contains(document.activeElement) ? document.activeElement.closest('.node') : null;
+    hid = hidden ? hidden.view(snap, peek, keep) : NO_HIDDEN;
+    if (peek && !hid.count) {
+      peek = false;
+      hid = hidden.view(snap, false, keep);
+    }
     const all = snap.sessions || [];
-    const byId = new Map(all.map((s) => [s.id, s]));
-    const top = all.filter((s) => !(s.parentSid && byId.has(s.parentSid)));
+    const kept = hid.gone.size ? all.filter((s) => !hid.concealed(s.id)) : all;
+    shownTotals = hid.gone.size ? hidden.totals(kept, attention()) : null;
+    const byId = new Map(kept.map((s) => [s.id, s]));
+    const top = kept.filter((s) => !(s.parentSid && byId.has(s.parentSid)));
     top.sort((a, b) => (b.alive - a.alive) || (a.startedAt || 0) - (b.startedAt || 0) || (a.id < b.id ? -1 : 1));
     index.clear();
     rawIndex.clear();
     renderAlerts();
     renderBanner();
-    const lanes = top.map((s) => layoutLane(s, all));
+    const lanes = top.map((s) => layoutLane(s, kept));
     // taken on an empty board, the restored view would not be put on screen once the sessions arrive
     const restoring = !!restoreView && lanes.length > 0;
     if (restoring) takeRestore();
     placeLanes(lanes);
     emptyEl.hidden = lanes.length > 0;
+    emptyEl.textContent = hid.gone.size ? 'All sessions are hidden.' : NO_SESSIONS;
 
     const sel = d3.select(world).selectAll('section.lane:not(.leaving)').data(lanes, (d) => d.id);
     sel.exit().classed('leaving', true).each(function (L) {
@@ -1164,7 +1207,9 @@
     noticeChanges(all);
     applyHover();
     renderHud();
-    if (restoreOpen && (restoreOpen === 'usage' || lanes.length)) {
+    paintHidden(was);
+    if (lost && lost.closest('.leaving') && hid.concealed(sessionOf(lost.d && lost.d.id)) && !hiddenBtn.hidden) hiddenBtn.focus();
+    if (restoreOpen && (restoreOpen === 'usage' || lanes.length || hid.gone.size)) {
       const id = restoreOpen;
       restoreOpen = null;
       if (id === 'usage') { if (window.OVUsage) window.OVUsage.open(); }
@@ -1243,6 +1288,8 @@
     setTimeout(() => card.classList.remove('beat'), 750);
   }
   function firePulses() {
+    // a card that comes back would otherwise pulse for the steps it made while away
+    for (const id of prevSteps.keys()) if (!index.has(id)) prevSteps.delete(id);
     if (document.hidden) {
       for (const [id, e] of index) if (e.n.data && e.n.data.steps != null) prevSteps.set(id, e.n.data.steps);
       return;
@@ -1265,7 +1312,7 @@
   function noticeChanges(all) {
     for (const s of all) {
       const prev = prevStates.get(s.id);
-      if (!first) {
+      if (!first && !hid.concealed(s.id)) {
         if (prev == null && s.alive) toast('New session: <b>' + esc(s.name) + '</b>', 's:' + s.id, false);
         else if (prev && prev !== 'died' && s.state === 'died') toast('Session died: <b>' + esc(s.name) + '</b>', 's:' + s.id, true);
       }
@@ -1453,7 +1500,8 @@
   function panelHtml(n) {
     const x = n.data;
     const st = visState(n);
-    let h = '<div class="p-top"><span class="p-kind">' + esc(KIND[n.kind] || '') + '</span><button type="button" class="p-x" data-close aria-label="Close">×</button></div>';
+    const hide = hidden && (n.kind === 'session' || (n.kind === 'child' && hidden.within(x.id, snap))) ? '<button type="button" class="p-hide" data-hide="' + esc(x.id) + '">' + (hidden.within(x.id, snap) ? 'Unhide session' : 'Hide session') + '</button>' : '';
+    let h = '<div class="p-top"><span class="p-kind">' + esc(KIND[n.kind] || '') + '</span>' + hide + '<button type="button" class="p-x" data-close aria-label="Close">×</button></div>';
     h += '<h2 class="p-title">' + esc(nameOf(n)) + '</h2>';
     h += '<div class="p-state c-' + st + '">' + icon(st) + chip(st) + '</div>';
     const problem = x.reason && (BAD.has(st) || st === 'stopped' || st === 'ended') ? x.reason : x.trouble && x.trouble.kind !== 'stalled' ? x.trouble.text : null;
@@ -1559,9 +1607,11 @@
     tickIn(panel);
   }
   function openPanel(id) {
+    const was = sessionOf(selected);
     selected = id;
     restoreOpen = null;
     store(OPEN_KEY, id);
+    if (hid.concealed(sessionOf(id)) || (was && hid.held(was))) render();
     panel.classList.add('open');
     document.body.classList.add('panel-open');
     for (const el of world.querySelectorAll('.node.sel')) el.classList.remove('sel');
@@ -1576,6 +1626,7 @@
     if (window.OVUsage) window.OVUsage.onSelect();
   }
   function closePanel() {
+    const sid = sessionOf(selected);
     const refocus = panelFocus.closing(nodeEls.get(selected));
     selected = null;
     restoreOpen = null;
@@ -1588,9 +1639,27 @@
     if (window.OVLive) window.OVLive.onSelect();
     if (window.OVUsage) window.OVUsage.onSelect();
     refocus();
+    if (sid && hid.held(sid)) {
+      const focused = document.activeElement;
+      render();
+      const now = document.activeElement;
+      // the card that took the focus back can leave with the panel, and stays in the page until it has faded
+      if (hid.concealed(sid) && (now !== focused || (now && now.closest && now.closest('.leaving')))) hiddenBtn.focus();
+    }
   }
   panel.addEventListener('click', (e) => {
     if (e.target.closest('[data-close]')) { closePanel(); return; }
+    const hb = e.target.closest('[data-hide]');
+    if (hb) {
+      const id = hb.getAttribute('data-hide');
+      const on = !hidden.within(id, snap);
+      if (on) hidden.set(id, true); else hidden.unhide(id, snap);
+      if (on && hid.held(id)) {
+        closePanel();
+        hiddenBtn.focus();
+      }
+      return;
+    }
     const res = e.target.closest('[data-res]');
     if (res) { openPanel('r:' + res.getAttribute('data-res')); return; }
     const f = e.target.closest('[data-focus]');
@@ -1604,8 +1673,12 @@
 
   // ---------- alerts, status line, banner ----------
 
+  function attention() {
+    const all = (snap && snap.attention) || [];
+    return hid.gone.size ? all.filter((a) => !hid.concealed(a.sid)) : all;
+  }
   function renderAlerts() {
-    const items = (snap && snap.attention) || [];
+    const items = attention();
     if (!items.length) {
       alertsEl.hidden = true;
       alertsEl.html = '';
@@ -1657,7 +1730,7 @@
   });
 
   function renderHud() {
-    const t = (snap && snap.totals) || {};
+    const t = shownTotals || (snap && snap.totals) || {};
     const part = (n, one, many, k) => '<span class="' + (k || '') + '"><span class="dot">·</span><b>' + n + '</b>' + (n === 1 ? one : many) + '</span>';
     const bits = [part(t.sessions || 0, 'session', 'sessions')];
     if (t.working) bits.push(part(t.working, 'working', 'working', 'k-work'));
@@ -1758,6 +1831,8 @@
     close: closePanel,
     repaint() { if (selected) renderPanel(); },
     show(id) { openPanel(id); focusNode(id); },
+    concealed(sid) { return hid.concealed(sid); },
+    concealKey() { return hid.key; },
     // keep holds only the user's own zoom and scroll; Fit fits afresh, so its step-up guard cannot hold an old scale
     relayout(keep) { if (!keep || follow) { packW = 0; packK = 0; } render(); },
   };
