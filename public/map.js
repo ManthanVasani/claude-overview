@@ -65,7 +65,7 @@
   let selected = null;
   let hoverId = null;
   let onlyActive = store(ACTIVE_KEY) === '1';
-  const NO_HIDDEN = { count: 0, gone: new Set(), marked: new Set(), concealed: () => false };
+  const NO_HIDDEN = { count: 0, gone: new Set(), marked: new Set(), concealed: () => false, held: () => false };
   let hid = NO_HIDDEN;
   let peek = false;
   let shownTotals = null;
@@ -893,10 +893,7 @@
 
   function sessionOf(id) { return id && /^(s|a|w|wa|t):/.test(id) ? id.split(':')[1] : null; }
   function paintHidden() {
-    const had = document.activeElement === hiddenBtn;
     hiddenBtn.hidden = !hid.count;
-    // the open details are the nearest place for the focus of a button that leaves
-    if (had && hiddenBtn.hidden && selected && panel.querySelector('.p-hide')) panel.querySelector('.p-hide').focus();
     hiddenBtn.innerHTML = '<b>' + hid.count + '</b>hidden';
     hiddenBtn.setAttribute('aria-pressed', peek ? 'true' : 'false');
   }
@@ -1490,7 +1487,7 @@
   function panelHtml(n) {
     const x = n.data;
     const st = visState(n);
-    const hide = n.kind === 'session' && hidden ? '<button type="button" class="p-hide" data-hide="' + esc(x.id) + '">' + (hidden.has(x.id) ? 'Unhide session' : 'Hide session') + '</button>' : '';
+    const hide = hidden && (n.kind === 'session' || (n.kind === 'child' && hidden.has(x.id))) ? '<button type="button" class="p-hide" data-hide="' + esc(x.id) + '">' + (hidden.has(x.id) ? 'Unhide session' : 'Hide session') + '</button>' : '';
     let h = '<div class="p-top"><span class="p-kind">' + esc(KIND[n.kind] || '') + '</span>' + hide + '<button type="button" class="p-x" data-close aria-label="Close">×</button></div>';
     h += '<h2 class="p-title">' + esc(nameOf(n)) + '</h2>';
     h += '<div class="p-state c-' + st + '">' + icon(st) + chip(st) + '</div>';
@@ -1597,10 +1594,11 @@
     tickIn(panel);
   }
   function openPanel(id) {
+    const was = sessionOf(selected);
     selected = id;
     restoreOpen = null;
     store(OPEN_KEY, id);
-    if (hid.concealed(sessionOf(id))) render();
+    if (hid.concealed(sessionOf(id)) || (was && hid.held(was))) render();
     panel.classList.add('open');
     document.body.classList.add('panel-open');
     for (const el of world.querySelectorAll('.node.sel')) el.classList.remove('sel');
@@ -1628,7 +1626,7 @@
     if (window.OVLive) window.OVLive.onSelect();
     if (window.OVUsage) window.OVUsage.onSelect();
     refocus();
-    if (sid && hid.marked.size) {
+    if (sid && hid.held(sid)) {
       const focused = document.activeElement;
       render();
       const now = document.activeElement;
@@ -1642,9 +1640,11 @@
     if (hb) {
       const id = hb.getAttribute('data-hide');
       const on = !hidden.has(id);
-      if (on) closePanel();
       hidden.set(id, on);
-      if (on && hid.concealed(id)) hiddenBtn.focus();
+      if (on && hid.held(id)) {
+        closePanel();
+        hiddenBtn.focus();
+      }
       return;
     }
     const res = e.target.closest('[data-res]');
