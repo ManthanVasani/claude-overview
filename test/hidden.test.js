@@ -47,12 +47,14 @@ test('a hidden session leaves the board with every session it started, and the o
 test('a hidden session stays on the board, marked, while it or a session in it waits for your answer, and not for a problem', () => {
   const { h } = page({ data: {} }, { t: 0 });
   h.set('a', true);
-  const sessions = (o) => [session('a'), session('c1', Object.assign({ parentSid: 'a' }, o))];
-  const row = (sid, level, quiet) => ({ level, sid, node: 's:' + sid, quiet });
+  const sessions = (o, a) => [session('a', a), session('c1', Object.assign({ parentSid: 'a' }, o))];
+  const row = (sid, level, quiet, node) => ({ level, sid, node: node || 's:' + sid, quiet });
   const cases = [
     ['a row waiting for you', sessions(), [row('a', 'needs', false)], false],
-    ['a died or stopped session', sessions(), [row('a', 'error', false)], true],
-    ['a failed agent', sessions(), [row('a', 'warn', false)], true],
+    ['a stopped session', sessions({}, { state: 'error' }), [row('a', 'error', false)], true],
+    ['a died session', sessions({}, { state: 'died', alive: false }), [row('a', 'error', false)], true],
+    ['a failed agent', sessions(), [row('a', 'error', false, 'a:a:1')], true],
+    ['a session that ended with a died agent', sessions({}, { state: 'ended', alive: false }), [row('a', 'warn', false)], true],
     ["a started session's quiet row", sessions(), [row('c1', 'needs', true)], true],
     ['a started session waiting for you', sessions({ state: 'needs-you' }), [], false],
     ['a started headless run waiting', sessions({ state: 'needs-you', headless: { kept: true } }), [], true],
