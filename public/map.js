@@ -43,6 +43,7 @@
   const hudEl = $('hud');
   const ctrlEl = document.querySelector('.ctrl');
   const emptyEl = $('empty');
+  const NO_SESSIONS = emptyEl.textContent;
   const toastsEl = $('toasts');
   const activeBtn = $('only-active');
   const hiddenBtn = $('hidden-btn');
@@ -896,7 +897,9 @@
     const handOff = !hid.count && !hiddenBtn.hidden && document.activeElement === hiddenBtn;
     hiddenBtn.hidden = !hid.count;
     hiddenBtn.innerHTML = '<b>' + hid.count + '</b>hidden';
+    hiddenBtn.setAttribute('aria-label', hid.count + ' hidden');
     hiddenBtn.setAttribute('aria-pressed', peek ? 'true' : 'false');
+    hiddenBtn.title = peek ? 'Hide them again' : 'Show the sessions you hid';
     // the focus of a button that hides falls to the page; the sessions it counted are why it hid
     const to = handOff && [...was, ...hid.marked].map((id) => nodeEls.get('s:' + id)).find(Boolean);
     if (to) to.focus();
@@ -974,7 +977,7 @@
         return '<div class="card child" title="' + esc(x.name) + '">' +
           '<div class="hd">' + icon(st) + '<span class="ttl">' + esc(x.name) + '</span><span class="badge">session</span></div>' +
           actLine(sessionAct(x), wraps(n)) +
-          '<div class="meta">' + joinMeta([model(x.model), x.ctx ? tok(x.ctx) + ' context' : '', x.cwd]) + '</div></div>';
+          '<div class="meta">' + (hid.marked.has(String(x.id)) ? '<span class="badge">hidden</span> ' : '') + joinMeta([model(x.model), x.ctx ? tok(x.ctx) + ' context' : '', x.cwd]) + '</div></div>';
       case 'agent':
         return '<div class="card agent" title="' + esc(x.desc) + '">' +
           '<div class="hd">' + icon(st) + '<span class="ttl">' + esc(x.desc) + '</span><span class="rt">' + spanOf(x) + '</span></div>' +
@@ -1094,7 +1097,7 @@
       }
     }
     el.d = n;
-    el.setAttribute('aria-label', (n.kind === 'more' ? n.data.label : (n.data.name || n.data.desc || n.data.label || '') + ', ' + (LABEL[st] || st)) + (n.kind === 'session' && hid.marked.has(String(n.data.id)) ? ', hidden' : ''));
+    el.setAttribute('aria-label', (n.kind === 'more' ? n.data.label : (n.data.name || n.data.desc || n.data.label || '') + ', ' + (LABEL[st] || st)) + ((n.kind === 'session' || n.kind === 'child') && hid.marked.has(String(n.data.id)) ? ', hidden' : ''));
   }
 
   function renderLane(el, L) {
@@ -1151,7 +1154,7 @@
 
   function render() {
     if (!snap) return;
-    // the details being read stay open when their hidden session goes quiet
+    // a hidden session stays on the board while details in it are open
     const keep = sessionOf(selected || restoreOpen);
     const was = hid.counted;
     hid = hidden ? hidden.view(snap, peek, keep) : NO_HIDDEN;
@@ -1175,6 +1178,7 @@
     if (restoring) takeRestore();
     placeLanes(lanes);
     emptyEl.hidden = lanes.length > 0;
+    emptyEl.textContent = hid.gone.size ? 'All sessions are hidden.' : NO_SESSIONS;
 
     const sel = d3.select(world).selectAll('section.lane:not(.leaving)').data(lanes, (d) => d.id);
     sel.exit().classed('leaving', true).each(function (L) {
@@ -1282,6 +1286,8 @@
     setTimeout(() => card.classList.remove('beat'), 750);
   }
   function firePulses() {
+    // a card back on the board counts its steps from its return
+    for (const id of prevSteps.keys()) if (!index.has(id)) prevSteps.delete(id);
     if (document.hidden) {
       for (const [id, e] of index) if (e.n.data && e.n.data.steps != null) prevSteps.set(id, e.n.data.steps);
       return;
@@ -1635,7 +1641,7 @@
       const focused = document.activeElement;
       render();
       const now = document.activeElement;
-      // the card that took the focus back can leave with the panel, and a leaving lane stays until it has faded
+      // the card that took the focus back can leave with the panel, and stays in the page until it has faded
       if (hid.concealed(sid) && (now !== focused || (now && now.closest && now.closest('.leaving')))) hiddenBtn.focus();
     }
   }

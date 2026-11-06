@@ -26,7 +26,7 @@ const ids = (v, list) => list.filter((id) => v.concealed(id));
 // the script's objects come from its own context, whose prototypes a strict compare would tell apart
 const plain = (x) => JSON.parse(JSON.stringify(x));
 const marked = (v) => [...v.marked].sort();
-// startedBy also holds the sessions that have left the board
+// startedBy can keep a link parentSid has dropped
 function board(sessions, attention, startedBy) {
   const up = Object.assign({}, startedBy);
   for (const s of sessions) if (s.parentSid) up[s.id] = s.parentSid;
@@ -44,14 +44,16 @@ test('a hidden session leaves the board with every session it started, and the o
   assert.deepEqual(ids(h.view(board([session('a'), session('c1', { parentSid: 'a' })])), ['a', 'c1']), []);
 });
 
-test('a hidden session stays on the board, marked, while it would send a desktop alert or a session in it waits for you', () => {
+test('a hidden session stays on the board, marked, while it or a session in it waits for your answer, and not for a problem', () => {
   const { h } = page({ data: {} }, { t: 0 });
   h.set('a', true);
   const sessions = (o) => [session('a'), session('c1', Object.assign({ parentSid: 'a' }, o))];
-  const row = (sid, quiet) => ({ level: 'error', sid, node: 's:' + sid, quiet });
+  const row = (sid, level, quiet) => ({ level, sid, node: 's:' + sid, quiet });
   const cases = [
-    ['a problem row', sessions(), [row('a', false)], false],
-    ["a started session's quiet row", sessions(), [row('c1', true)], true],
+    ['a row waiting for you', sessions(), [row('a', 'needs', false)], false],
+    ['a died or stopped session', sessions(), [row('a', 'error', false)], true],
+    ['a failed agent', sessions(), [row('a', 'warn', false)], true],
+    ["a started session's quiet row", sessions(), [row('c1', 'needs', true)], true],
     ['a started session waiting for you', sessions({ state: 'needs-you' }), [], false],
     ['a started headless run waiting', sessions({ state: 'needs-you', headless: { kept: true } }), [], true],
     ['a started session that has ended in needs-you', sessions({ state: 'needs-you', alive: false }), [], true],
@@ -68,7 +70,7 @@ test('showing the hidden sessions brings each one back, marked, and keeps the co
   const { h } = page({ data: {} }, { t: 0 });
   h.set('a', true);
   h.set('b', true);
-  const v = h.view(board([session('a'), session('c1', { parentSid: 'a' }), session('b'), session('d')], [{ level: 'error', sid: 'b', quiet: false }]), true);
+  const v = h.view(board([session('a'), session('c1', { parentSid: 'a' }), session('b'), session('d')], [{ level: 'needs', sid: 'b', quiet: false }]), true);
   assert.deepEqual(ids(v, ['a', 'c1', 'b', 'd']), []);
   assert.deepEqual(marked(v), ['a', 'b']);
   assert.equal(v.count, 1);
@@ -80,7 +82,7 @@ test('the steps of a hidden session that has left the board stay off the timelin
   const left = board([session('b')], [], { c1: 'a' });
   assert.deepEqual(ids(h.view(left), ['a', 'c1', 'b', 'never-seen']), ['a', 'c1']);
   assert.deepEqual(ids(h.view(left, true), ['a', 'c1']), []);
-  const back = h.view(board([session('a')], [{ level: 'error', sid: 'a', quiet: false }], { c1: 'a' }));
+  const back = h.view(board([session('a')], [{ level: 'needs', sid: 'a', quiet: false }], { c1: 'a' }));
   assert.deepEqual(ids(back, ['a', 'c1']), []);
 });
 
@@ -171,7 +173,7 @@ test('unhiding a session takes off every hidden session above it, so it shows, a
   assert.deepEqual([h.has('x'), h.within('p', board([], [], { p: 'q', q: 'p' }))], [true, false]);
 });
 
-test('the timeline redraws when a hidden session off the board comes back, as when the hidden ones are shown while one is open', () => {
+test('the Live feed redraws whenever the sessions it leaves out change, on the board or off it', () => {
   const { h } = page({ data: {} }, { t: 0 });
   const snap = (startedBy) => board([session('d'), session('b')], [], startedBy);
   assert.equal(h.view(snap({ c1: 'a' })).key, '');
@@ -183,7 +185,7 @@ test('the timeline redraws when a hidden session off the board comes back, as wh
   assert.equal(h.view(snap({ c1: 'a' }), true, 'd').key, '');
 });
 
-test('the session whose details are open stays on the board, marked, with the sessions it started', () => {
+test('a hidden session stays on the board, marked, with the sessions it started, while the details of one of them are open', () => {
   const { h } = page({ data: {} }, { t: 0 });
   h.set('a', true);
   const snap = board([session('a'), session('c1', { parentSid: 'a' }), session('b')]);
@@ -195,7 +197,7 @@ test('the session whose details are open stays on the board, marked, with the se
   assert.deepEqual(ids(h.view(snap, false, 'b'), ['a', 'c1']), ['a', 'c1']);
   assert.deepEqual(ids(h.view(snap, false, 'not-on-the-board'), ['a', 'c1']), ['a', 'c1']);
   assert.equal(h.view(snap, true, 'a').held('a'), false);
-  assert.equal(h.view(Object.assign({}, snap, { attention: [{ level: 'error', sid: 'a', quiet: false }] }), false, 'a').held('a'), false);
+  assert.equal(h.view(Object.assign({}, snap, { attention: [{ level: 'needs', sid: 'a', quiet: false }] }), false, 'a').held('a'), false);
 });
 
 test('the list outlives a reload, and the tabs of the board share it, each redrawing only when the list changes', () => {

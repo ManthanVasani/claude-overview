@@ -41,7 +41,7 @@
     edit(() => { if (on) ids.set(id, Date.now()); else ids.delete(id); });
     changed();
   }
-  // a session shows only once nothing above it is hidden
+  // a session stays hidden while anything above it is hidden
   function unhide(id, snap) {
     const startedBy = (snap && snap.startedBy) || {};
     const seen = new Set();
@@ -70,9 +70,7 @@
     return saved;
   }
 
-  // A hidden session stays while it would alert or a session in it waits for you, so no alert points at a missing card.
-  // keep is the session whose details are open.
-  function view(snap, peek, keep) {
+  function view(snap, peek, open) {
     const all = (snap && snap.sessions) || [];
     const startedBy = (snap && snap.startedBy) || {};
     const byId = new Map(all.map((s) => [String(s.id), s]));
@@ -83,9 +81,9 @@
     }
     const root = new Map(all.map((s) => [String(s.id), rootOf(s.id, startedBy)]));
     const loud = new Set();
-    for (const a of (snap && snap.attention) || []) if (!a.quiet) loud.add(root.get(String(a.sid)));
+    for (const a of (snap && snap.attention) || []) if (!a.quiet && a.level === 'needs') loud.add(root.get(String(a.sid)));
     for (const s of all) if (s.alive && s.state === 'needs-you' && !s.headless) loud.add(root.get(String(s.id)));
-    const kept = keep != null && byId.has(String(keep)) ? root.get(String(keep)) : null;
+    const kept = open != null && byId.has(String(open)) ? root.get(String(open)) : null;
     const back = (r) => loud.has(r) || r === kept;
     const away = new Map();
     const awayHidden = (sid) => {

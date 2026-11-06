@@ -24,7 +24,6 @@ function el() {
   };
 }
 
-// desktop alerts go out only while the page is not in front
 function page(hiddenIds) {
   const sent = [];
   const timers = [];
@@ -34,6 +33,7 @@ function page(hiddenIds) {
   Notification.permission = 'granted';
   const prefs = JSON.stringify({ on: true, needs: true, problems: true, turns: true });
   const ctx = {
+    // desktop alerts go out only while the page is not in front
     document: { getElementById: () => el(), querySelector: () => null, title: 'Claude overview', hasFocus: () => false, addEventListener() {}, documentElement: {} },
     localStorage: { getItem: (k) => (k === 'claude-overview-alerts' ? prefs : null), setItem() {} },
     getComputedStyle: () => ({ getPropertyValue: () => '' }),
@@ -51,6 +51,7 @@ function page(hiddenIds) {
     snap: (sessions, attention, startedBy) => ctx.OVAlerts.onSnap({ boot: 1, sessions, attention: attention || [], startedBy }),
     settle: () => timers.splice(0).forEach((fn) => fn()),
     sent,
+    hidden: ctx.OVHidden,
   };
 }
 const session = (id, state, o) => Object.assign({ id, name: id.toUpperCase(), alive: true, state, since: 5 }, o);
@@ -64,12 +65,15 @@ test('a hidden session and the sessions it started send no Your turn alert, and 
   assert.deepEqual(p.sent, ['Your turn: B']);
 });
 
-test('a hidden session sends its Needs you and Stopped alerts', () => {
+test('a hidden session sends its Needs you alert, and a problem alert while the problem leaves it hidden', () => {
   const p = page(['a']);
   p.snap([session('a', 'working')]);
+  p.snap([session('a', 'needs-you', { waiting: { since: 6, text: 'Waiting for your permission' } })]);
   const stopped = { level: 'error', sid: 'a', node: 's:a', title: 'A', text: 'Stopped: API Error', since: 7, session: 'A', quiet: false };
-  p.snap([session('a', 'needs-you', { waiting: { since: 6, text: 'Waiting for your permission' } })], [stopped]);
+  const sessions = [session('a', 'error')];
+  p.snap(sessions, [stopped]);
   assert.deepEqual(p.sent, ['Needs you: A', 'A']);
+  assert.ok(p.hidden.view({ sessions, attention: [stopped] }, false, null).gone.has('a'));
 });
 
 test('the page loads hidden.js before the scripts that read it', () => {

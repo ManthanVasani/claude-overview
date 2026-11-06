@@ -1088,6 +1088,7 @@
   const feedRows = new Map();
   const feedQueue = [];
   let feedFrozen = false;
+  let feedStale = false;
   function statusHtml(st) {
     if (st.ok === -1) return '<span class="fs open" title="Running"><i></i></span>';
     if (st.ok === 0) return '<span class="fs bad" title="Failed">✕</span>';
@@ -1131,6 +1132,7 @@
     }
   }
   function rebuildFeed() {
+    feedStale = false;
     feedEl.innerHTML = '';
     feedRows.clear();
     feedQueue.length = 0;
@@ -1142,7 +1144,8 @@
   function flushFeed() {
     feedFrozen = false;
     feedNew.hidden = true;
-    if (feedQueue.length) insertFeed(feedQueue.splice(0), true);
+    if (feedStale) rebuildFeed();
+    else if (feedQueue.length) insertFeed(feedQueue.splice(0), true);
   }
   feedEl.addEventListener('pointerenter', () => { feedFrozen = true; });
   feedEl.addEventListener('pointerleave', () => {
@@ -1454,7 +1457,7 @@
         lastAgg = pn;
         agg = aggregate(shown);
         // a hidden session editing the same file is a collision too
-        if (!hide.has('edit')) for (const st of windowSteps(w, (x) => x.k === 'edit' && OV.concealed(x.sid))) if (agg.has(st.r)) agg.get(st.r).editors.add(st.sid);
+        if (!hide.has('edit') && concealKey) for (const st of windowSteps(w, (x) => x.k === 'edit' && OV.concealed(x.sid))) if (agg.has(st.r)) agg.get(st.r).editors.add(st.sid);
         renderTouch(w);
         renderKinds(shown);
         renderFeedHead();
@@ -1479,7 +1482,8 @@
       const key = OV.concealKey();
       if (key !== concealKey) {
         concealKey = key;
-        rebuildFeed();
+        if (feedFrozen) feedStale = true;
+        else rebuildFeed();
         lastAgg = 0;
       }
       dirty(true);
