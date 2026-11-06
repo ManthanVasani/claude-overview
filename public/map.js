@@ -901,7 +901,7 @@
     hiddenBtn.setAttribute('aria-pressed', peek ? 'true' : 'false');
     hiddenBtn.title = peek ? 'Hide them again' : 'Show the sessions you hid';
     // the focus of a button that hides falls to the page; the sessions it counted are why it hid
-    const to = handOff && [...was, ...hid.marked].map((id) => nodeEls.get('s:' + id)).find(Boolean);
+    const to = handOff && [...was, ...hid.marked].map((id) => nodeEls.get('s:' + id)).find((el) => el && el.isConnected && !el.closest('.leaving'));
     if (to) to.focus();
   }
   if (hidden) {
@@ -1207,7 +1207,7 @@
     applyHover();
     renderHud();
     paintHidden(was);
-    if (restoreOpen && (restoreOpen === 'usage' || lanes.length)) {
+    if (restoreOpen && (restoreOpen === 'usage' || lanes.length || hid.gone.size)) {
       const id = restoreOpen;
       restoreOpen = null;
       if (id === 'usage') { if (window.OVUsage) window.OVUsage.open(); }
@@ -1286,7 +1286,7 @@
     setTimeout(() => card.classList.remove('beat'), 750);
   }
   function firePulses() {
-    // a card back on the board counts its steps from its return
+    // a card that comes back would otherwise pulse for the steps it made while away
     for (const id of prevSteps.keys()) if (!index.has(id)) prevSteps.delete(id);
     if (document.hidden) {
       for (const [id, e] of index) if (e.n.data && e.n.data.steps != null) prevSteps.set(id, e.n.data.steps);

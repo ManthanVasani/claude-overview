@@ -107,9 +107,10 @@ body:has(#full-screen[hidden]) { --ic-full: 0px; }
 .hud .k-need b { color: var(--need); }
 .hud .k-bad b { color: var(--bad); }
 .hud .dot { opacity: .4; }
-#hud-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* the counts give way before N hidden does */
+#hud-text { flex-shrink: 100000; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 #hud-text > span:first-child .dot { display: none; }
-#hidden-btn { flex: none; margin: -2px -6px -2px 0; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--text-3); font: inherit; cursor: pointer; }
+#hidden-btn { min-width: 0; overflow: hidden; text-overflow: ellipsis; margin: -2px -6px -2px 0; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--text-3); font: inherit; cursor: pointer; }
 #hidden-btn:hover { color: var(--text); border-color: var(--border-hi); }
 #hidden-btn:focus-visible { outline: 2px solid var(--wait); outline-offset: 2px; }
 #hidden-btn[aria-pressed="true"] { color: var(--work); border-color: rgba(52, 211, 153, .45); background: rgba(52, 211, 153, .1); }
