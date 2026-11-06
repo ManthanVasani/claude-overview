@@ -41,6 +41,13 @@
     edit(() => { if (on) ids.set(id, Date.now()); else ids.delete(id); });
     changed();
   }
+  // a session shows only once nothing above it is hidden
+  function unhide(id, snap) {
+    const startedBy = (snap && snap.startedBy) || {};
+    const seen = new Set();
+    edit(() => { for (let x = String(id); x && !seen.has(x); x = startedBy[x]) { ids.delete(x); seen.add(x); } });
+    changed();
+  }
 
   // the topmost, so the sessions on the board above a shown one are shown too
   function rootOf(id, startedBy) {
@@ -81,6 +88,11 @@
     const kept = keep != null && byId.has(String(keep)) ? root.get(String(keep)) : null;
     const back = (r) => loud.has(r) || r === kept;
     const away = new Map();
+    const awayHidden = (sid) => {
+      if (!away.has(sid)) away.set(sid, rootOf(sid, startedBy));
+      const r = away.get(sid);
+      return !!r && !peek && !back(r);
+    };
     const gone = new Set();
     const marked = new Set();
     const counted = new Set();
@@ -92,18 +104,19 @@
       if (!back(r) && !peek) gone.add(id);
       else if (ids.has(id) || !(s.parentSid && byId.has(String(s.parentSid)))) marked.add(id);
     }
+    const key = [...gone];
+    // only a hidden id or a session started from another can be hidden off the board
+    if (ids.size) for (const id of new Set([...ids.keys(), ...Object.keys(startedBy)])) if (!byId.has(id) && awayHidden(id)) key.push(id);
     return {
       count: counted.size,
       counted,
       gone,
       marked,
+      key: key.sort().join(),
       concealed(sid) {
         if (!ids.size) return false;
         sid = String(sid);
-        if (byId.has(sid)) return gone.has(sid);
-        if (!away.has(sid)) away.set(sid, rootOf(sid, startedBy));
-        const r = away.get(sid);
-        return !!r && !peek && !back(r);
+        return byId.has(sid) ? gone.has(sid) : awayHidden(sid);
       },
       held(sid) {
         const r = root.get(String(sid));
@@ -139,5 +152,5 @@
     if ([...ids.keys()].sort().join() !== was) changed();
   });
 
-  window.OVHidden = { has, within, set, view, totals, on(fn) { subs.push(fn); } };
+  window.OVHidden = { has, within, set, unhide, view, totals, on(fn) { subs.push(fn); } };
 })();

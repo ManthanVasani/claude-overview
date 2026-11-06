@@ -7,7 +7,7 @@ const test = require('node:test');
 const vm = require('vm');
 const { Board, runningToolShell, sleep, SERVER_TEST_MS } = require('./helpers/board');
 const { prompt, call, said, result, launched, notification, PERMISSION, SCREEN, quote, SCRUB } = require('./helpers/claude-code');
-const { AGENT_FIRST_BYTES, BACKFILL_CHUNK, BACKFILL_PER_FILE, BACKFILL_PER_RUN, SESSION_FIRST_BYTES, EV_KEEP_MS } = require('../lib/constants');
+const { AGENT_FIRST_BYTES, BACKFILL_CHUNK, BACKFILL_PER_FILE, BACKFILL_PER_RUN, SESSION_FIRST_BYTES, POLL_MS, STARTER_KEEP_MS } = require('../lib/constants');
 const { noteStarters } = require('../lib/sessions');
 
 // a line the board reads as a tool shell, kept running by its sleep
@@ -354,8 +354,11 @@ test('a session started from another keeps who started it after that one ends, a
   assert.deepEqual(snap.startedBy, {});
 });
 
-test('who started a session is kept while it or a session it started is on the board, until its steps leave the timeline, and not for a new process of it', () => {
-  const K = EV_KEEP_MS;
+test('who started a session is kept while it or a session it started is on the board, until its steps leave every page, and not for a new process of it', () => {
+  const K = STARTER_KEEP_MS;
+  const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'live.js'), 'utf8');
+  const held = Function('return ' + page.match(/const HIST_MS = ([^;]+);/)[1])() + Number(page.match(/now\(\) - HIST_MS - ([^;]+);/)[1]);
+  assert.ok(K >= held + POLL_MS, 'a page keeps a step for ' + held + ' ms');
   const known = new Map();
   const c = (o) => Object.assign({ id: 'c', pid: 7, alive: true }, o);
   const d = { id: 'd', pid: 9, alive: true };

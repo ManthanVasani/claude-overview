@@ -65,7 +65,7 @@
   let selected = null;
   let hoverId = null;
   let onlyActive = store(ACTIVE_KEY) === '1';
-  const NO_HIDDEN = { count: 0, counted: new Set(), gone: new Set(), marked: new Set(), concealed: () => false, held: () => false };
+  const NO_HIDDEN = { count: 0, counted: new Set(), gone: new Set(), marked: new Set(), key: '', concealed: () => false, held: () => false };
   let hid = NO_HIDDEN;
   let peek = false;
   let shownTotals = null;
@@ -1492,7 +1492,7 @@
   function panelHtml(n) {
     const x = n.data;
     const st = visState(n);
-    const hide = hidden && (n.kind === 'session' || (n.kind === 'child' && hidden.has(x.id))) ? '<button type="button" class="p-hide" data-hide="' + esc(x.id) + '">' + (hidden.has(x.id) ? 'Unhide session' : 'Hide session') + '</button>' : '';
+    const hide = hidden && (n.kind === 'session' || (n.kind === 'child' && hidden.within(x.id, snap))) ? '<button type="button" class="p-hide" data-hide="' + esc(x.id) + '">' + (hidden.within(x.id, snap) ? 'Unhide session' : 'Hide session') + '</button>' : '';
     let h = '<div class="p-top"><span class="p-kind">' + esc(KIND[n.kind] || '') + '</span>' + hide + '<button type="button" class="p-x" data-close aria-label="Close">×</button></div>';
     h += '<h2 class="p-title">' + esc(nameOf(n)) + '</h2>';
     h += '<div class="p-state c-' + st + '">' + icon(st) + chip(st) + '</div>';
@@ -1644,8 +1644,8 @@
     const hb = e.target.closest('[data-hide]');
     if (hb) {
       const id = hb.getAttribute('data-hide');
-      const on = !hidden.has(id);
-      hidden.set(id, on);
+      const on = !hidden.within(id, snap);
+      if (on) hidden.set(id, true); else hidden.unhide(id, snap);
       if (on && hid.held(id)) {
         closePanel();
         hiddenBtn.focus();
@@ -1824,7 +1824,7 @@
     repaint() { if (selected) renderPanel(); },
     show(id) { openPanel(id); focusNode(id); },
     concealed(sid) { return hid.concealed(sid); },
-    concealKey() { return [...hid.gone].sort().join(); },
+    concealKey() { return hid.key; },
     // keep holds only the user's own zoom and scroll; Fit fits afresh, so its step-up guard cannot hold an old scale
     relayout(keep) { if (!keep || follow) { packW = 0; packK = 0; } render(); },
   };

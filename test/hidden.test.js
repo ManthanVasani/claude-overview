@@ -157,6 +157,32 @@ test('a session hidden on its own stays hidden when the session that started it 
   assert.deepEqual(ids(next.view(board([session('a'), session('c1', { parentSid: 'a' })])), ['a', 'c1']), ['c1']);
 });
 
+test('unhiding a session takes off every hidden session above it, so it shows, and leaves the others hidden', () => {
+  const { h } = page({ data: {} }, { t: 0 });
+  for (const id of ['a', 'c', 'x']) h.set(id, true);
+  const snap = board([session('b'), session('c', { parentSid: 'b' }), session('d', { parentSid: 'c' }), session('x')], [], { b: 'a' });
+  assert.deepEqual([h.has('b'), h.within('b', snap)], [false, true]);
+  h.unhide('b', snap);
+  assert.deepEqual(ids(h.view(snap), ['a', 'b', 'c', 'd', 'x']), ['c', 'd', 'x']);
+  h.set('a', true);
+  h.unhide('d', snap);
+  assert.deepEqual(ids(h.view(snap), ['a', 'b', 'c', 'd', 'x']), ['x']);
+  h.unhide('p', board([], [], { p: 'q', q: 'p' }));
+  assert.deepEqual([h.has('x'), h.within('p', board([], [], { p: 'q', q: 'p' }))], [true, false]);
+});
+
+test('the timeline redraws when a hidden session off the board comes back, as when the hidden ones are shown while one is open', () => {
+  const { h } = page({ data: {} }, { t: 0 });
+  const snap = (startedBy) => board([session('d'), session('b')], [], startedBy);
+  assert.equal(h.view(snap({ c1: 'a' })).key, '');
+  h.set('a', true);
+  h.set('d', true);
+  assert.equal(h.view(snap({ c1: 'a' })).key, 'a,c1,d');
+  assert.equal(h.view(snap({})).key, 'a,d');
+  assert.equal(h.view(snap({ c1: 'a' }), false, 'd').key, 'a,c1');
+  assert.equal(h.view(snap({ c1: 'a' }), true, 'd').key, '');
+});
+
 test('the session whose details are open stays on the board, marked, with the sessions it started', () => {
   const { h } = page({ data: {} }, { t: 0 });
   h.set('a', true);
