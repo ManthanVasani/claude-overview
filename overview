@@ -43,11 +43,12 @@ case "${1:-status}" in
     if [ -z "$running" ]; then echo "Not running"; exit 0; fi
     kill $running
     # a start right after this would find the old copy still closing
-    for _ in {1..50}; do
+    SECONDS=0
+    while :; do
       left=""
       now=" $(echo $(pids)) "
       for p in $running; do case "$now" in *" $p "*) left="$left $p" ;; esac; done
-      [ -z "$left" ] && break
+      if [ -z "$left" ] || [ "$SECONDS" -ge 5 ]; then break; fi
       sleep 0.1
     done
     if [ -n "$left" ]; then echo "Still running (pid$left); kill -9$left ends it"; exit 1; fi

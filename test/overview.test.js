@@ -68,6 +68,7 @@ test('stop counts a server that has exited as stopped while its parent has not y
   cp.spawn('bash', ['-c', '"$0" "$1" & exec -a "$1" sleep 30', process.execPath, server], { stdio: 'ignore' });
   let status;
   for (let i = 0; i < 100; i++) { await wait(50); status = run('status'); if (status.stdout.startsWith('Running')) break; }
+  assert.match(status.stdout, /^Running \(pid \d+\)/);
   const pid = pidOf(status);
   const stop = run('stop');
   assert.deepEqual([stop.status, stop.stdout.trim()], [0, 'Stopped (pid ' + pid + ')']);
@@ -83,6 +84,7 @@ test('stop waits only for the server it stopped, not for a copy started while it
   stopping.stdout.on('data', (d) => { out += d; });
   const done = new Promise((r) => stopping.on('close', r));
   for (let i = 0; i < 250 && !fs.existsSync(path.join(dir, 'got-term')); i++) await wait(20);
+  assert.ok(fs.existsSync(path.join(dir, 'got-term')));
   const fresh = cp.spawn(process.execPath, [path.join(dir, 'server.js')], { stdio: 'ignore' });
   const code = await done;
   assert.deepEqual([code, out.trim()], [0, 'Stopped (pid ' + pidOf(first) + ')']);
