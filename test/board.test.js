@@ -371,7 +371,7 @@ test('who started a session is kept while it or a session it started is on the b
   assert.deepEqual(noteStarters(known, [c({ pid: 8 }), d], 2 * K + 1), { d: 'c' });
 });
 
-test('a busy session whose turn has ended waits on the agents and workflows it started in the background, and is stalled once none runs', { timeout: SERVER_TEST_MS, skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
+test('a busy session whose turn has ended waits on the agents and workflows it started in the background until a notification or a queued prompt wakes it, and is stalled once none runs', { timeout: SERVER_TEST_MS, skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
   const Q0 = Date.now() - 20 * 60000;
   const b = new Board('bgwait-', { startedAt: Q0 - 5000 });
   t.after(() => b.stop());
@@ -379,6 +379,8 @@ test('a busy session whose turn has ended waits on the agents and workflows it s
   const start = (id, desc) => [call(Q0 + 1000, 'Agent', { description: desc, prompt: 'watch', subagent_type: 'general-purpose', run_in_background: true }, id), result(Q0 + 1100, id, null, 'Async agent launched successfully.')];
   const meta = (id, desc) => ({ description: desc, agentType: 'general-purpose', toolUseId: id, requestShape: 'background' });
   const working = [prompt(Q0 + 1200), call(Date.now() - 100, 'Bash', { command: 'tail deploy.log' })];
+  const queued = (text) => ({ type: 'attachment', timestamp: new Date(Q0 + 3000).toISOString(), attachment: { type: 'queued_command', prompt: text } });
+  const report = '<task-notification>\n<task-id>gdone</task-id>\n<status>completed</status>\n</task-notification>';
   b.session('one', busy, [prompt(Q0), ...start('tuOne', 'Watch the deploy'), said(Q0 + 2000)]);
   b.agent('one', 'g1', meta('tuOne', 'Watch the deploy'), working);
   b.agent('one', 'g1b', { description: 'Read the logs', agentType: 'general-purpose', toolUseId: 'tuSub', parentAgentId: 'g1', spawnDepth: 2 }, working);
@@ -391,13 +393,25 @@ test('a busy session whose turn has ended waits on the agents and workflows it s
   b.agent('cut', 'g4', meta('tuCut', 'Watch the deploy'), working);
   b.session('shelled', busy, [prompt(Q0), ...start('tuSh', 'Run the watcher'), said(Q0 + 2000)], b.shells(['sleep 600', b.task('bwait1')]));
   b.agent('shelled', 'g6', meta('tuSh', 'Run the watcher'), [prompt(Q0 + 1200), call(Q0 + 1300, 'Bash', { command: 'npm run watch', description: 'Run the watcher', run_in_background: true }, 'tuW6'), launched(Q0 + 1400, 'tuW6', 'bwait1'), said(Q0 + 1500)]);
+  b.session('orphan', busy, [prompt(Q0), ...start('tuOr', 'Plan the release'), said(Q0 + 2000)]);
+  b.agent('orphan', 'g8', meta('tuOr', 'Plan the release'), [prompt(Q0 + 1200), said(Q0 + 1500)]);
+  b.agent('orphan', 'g8b', { description: 'Read the logs', agentType: 'general-purpose', toolUseId: 'tuOrSub', parentAgentId: 'g8', spawnDepth: 2 }, working);
+  b.session('woken', busy, [prompt(Q0), ...start('tuWk', 'Watch the deploy'), said(Q0 + 2000), queued(report)]);
+  b.agent('woken', 'g9', meta('tuWk', 'Watch the deploy'), working);
+  b.session('queued', busy, [prompt(Q0), ...start('tuQd', 'Watch the deploy'), said(Q0 + 2000), queued('also check the docs')]);
+  b.agent('queued', 'g10', meta('tuQd', 'Watch the deploy'), working);
+  b.session('cut-woken', busy, [prompt(Q0), ...start('tuCw', 'Watch the deploy'), prompt(Q0 + 2000, '[Request interrupted by user]'), notification(Q0 + 3000, 'gdone')]);
+  b.agent('cut-woken', 'g11', meta('tuCw', 'Watch the deploy'), working);
+  b.session('fg-cut', busy, [prompt(Q0), call(Q0 + 1000, 'Agent', { description: 'Check the logs', prompt: 'look', subagent_type: 'general-purpose' }, 'tuFg'), prompt(Q0 + 2000, '[Request interrupted by user]')]);
+  b.agent('fg-cut', 'g12', { description: 'Check the logs', agentType: 'general-purpose', toolUseId: 'tuFg' }, working);
   b.session('mid', busy, [prompt(Q0), ...start('tuMid', 'Watch the deploy'), call(Date.now() - 2000, 'Bash', { command: 'make check', description: 'Check it' })]);
   b.agent('mid', 'g7', meta('tuMid', 'Watch the deploy'), working);
   b.session('none', busy, [prompt(Q0), ...start('tuNone', 'Watch the deploy'), said(Q0 + 2000)]);
   b.agent('none', 'g5', meta('tuNone', 'Watch the deploy'), [prompt(Q0 + 1200), said(Q0 + 1500)]);
-  for (const k of ['one', 'two', 'flow', 'cut', 'shelled', 'none']) fs.utimesSync(b.transcript(k), new Date(Q0 + 2000), new Date(Q0 + 2000));
+  for (const k of ['one', 'two', 'flow', 'cut', 'shelled', 'orphan', 'fg-cut', 'none']) fs.utimesSync(b.transcript(k), new Date(Q0 + 2000), new Date(Q0 + 2000));
+  for (const k of ['woken', 'queued', 'cut-woken']) fs.utimesSync(b.transcript(k), new Date(Q0 + 3000), new Date(Q0 + 3000));
   await b.start();
-  const snap = await b.waitFor('the agent waiting on its shell', (st) => st.sessions.length >= 7 && b.view(st, 'shelled').agents.some((a) => a.state === 'waiting'));
+  const snap = await b.waitFor('the agent waiting on its shell', (st) => st.sessions.length >= 12 && b.view(st, 'shelled').agents.some((a) => a.state === 'waiting'));
   const look = (k) => { const v = b.view(snap, k); return [v.state, v.act && v.act.label, v.trouble && v.trouble.kind]; };
   const stalled = (k) => snap.attention.some((a) => a.sid === b.sessions[k].sid && a.text === 'No activity while working');
   assert.deepEqual(look('one'), ['working', 'Waiting on its background agent: Watch the deploy', null]);
@@ -405,8 +419,11 @@ test('a busy session whose turn has ended waits on the agents and workflows it s
   assert.deepEqual(look('two'), ['working', 'Waiting on 2 background agents', null]);
   assert.deepEqual(look('flow'), ['working', 'Waiting on its workflow: wf_bg1', null]);
   assert.deepEqual(look('cut'), ['working', 'Waiting on its background agent: Watch the deploy', null]);
+  assert.equal(b.view(snap, 'cut').since, Q0 + 2000);
+  assert.deepEqual(look('orphan'), ['working', 'Waiting on its background agent: Read the logs', null]);
+  for (const k of ['woken', 'queued', 'cut-woken', 'fg-cut']) assert.deepEqual(look(k), ['working', 'Thinking', 'stalled'], k);
   assert.deepEqual(look('shelled'), ['working', 'Waiting on its background agent: Run the watcher', null]);
   assert.deepEqual(look('mid'), ['working', 'Check it', null]);
   assert.deepEqual(look('none'), ['working', 'Thinking', 'stalled']);
-  assert.deepEqual(['one', 'two', 'flow', 'cut', 'shelled', 'none'].map(stalled), [false, false, false, false, false, true]);
+  assert.deepEqual(['one', 'two', 'flow', 'cut', 'shelled', 'orphan', 'none'].map(stalled), [false, false, false, false, false, false, true]);
 });
