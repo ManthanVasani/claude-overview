@@ -430,6 +430,10 @@ test('a busy session whose turn has ended waits on the background agents and wor
   b.agent('cut-compact', 'g21', meta('tuCc', 'Watch the deploy'), working);
   b.session('screen-compact', screen, [prompt(Q0), ...start('tuScc', 'Watch the deploy'), said(Q0 + 2000), compacted(Q0 + 2500)]);
   b.agent('screen-compact', 'g22', meta('tuScc', 'Watch the deploy'), [prompt(Q0 + 1200), said(Q0 + 1500)]);
+  b.session('unknown', {}, [prompt(Q0), ...start('tuUn', 'Watch the deploy'), said(Q0 + 2000)]);
+  b.agent('unknown', 'g23', meta('tuUn', 'Watch the deploy'), working);
+  b.session('shell-report', busy, [prompt(Q0), ...start('tuBn', 'Watch the deploy'), said(Q0 + 2000), typed(Q0 + 3000, '<bash-notification>\n<shell-id>bdone1</shell-id>\n<status>completed</status>\n</bash-notification>')]);
+  b.agent('shell-report', 'g24', meta('tuBn', 'Watch the deploy'), working);
   b.session('cut-woken', busy, [prompt(Q0), ...start('tuCw', 'Watch the deploy'), prompt(Q0 + 2000, '[Request interrupted by user]'), peer(Q0 + 3000)]);
   b.agent('cut-woken', 'g11', meta('tuCw', 'Watch the deploy'), working);
   b.session('moved', busy, [prompt(Q0), call(Q0 + 1000, 'Agent', { description: 'Check the logs', prompt: 'look', subagent_type: 'general-purpose' }, 'tuFg'), said(Q0 + 2000)]);
@@ -439,9 +443,9 @@ test('a busy session whose turn has ended waits on the background agents and wor
   b.session('none', busy, [prompt(Q0), ...start('tuNone', 'Watch the deploy'), said(Q0 + 2000)]);
   b.agent('none', 'g5', meta('tuNone', 'Watch the deploy'), [prompt(Q0 + 1200), said(Q0 + 1500)]);
   for (const k of ['one', 'two', 'flow', 'cut', 'shelled', 'orphan', 'stopped', 'retired', 'mixed', 'flow-done', 'moved', 'screen', 'screen-done', 'cut-compact', 'screen-compact', 'none']) fs.utimesSync(b.transcript(k), new Date(Q0 + 2000), new Date(Q0 + 2000));
-  for (const k of ['woken', 'messaged', 'again', 'local', 'skill', 'cut-woken']) fs.utimesSync(b.transcript(k), new Date(Q0 + 3000), new Date(Q0 + 3000));
+  for (const k of ['woken', 'messaged', 'again', 'local', 'skill', 'shell-report', 'cut-woken']) fs.utimesSync(b.transcript(k), new Date(Q0 + 3000), new Date(Q0 + 3000));
   await b.start();
-  const snap = await b.waitFor('the agent waiting on its shell', (st) => st.sessions.length >= 23 && b.view(st, 'shelled').agents.some((a) => a.state === 'waiting'));
+  const snap = await b.waitFor('the agent waiting on its shell', (st) => st.sessions.length >= 25 && b.view(st, 'shelled').agents.some((a) => a.state === 'waiting'));
   const look = (k) => { const v = b.view(snap, k); return [v.state, v.act && v.act.label, v.trouble && v.trouble.kind]; };
   const stalled = (k) => snap.attention.some((a) => a.sid === b.sessions[k].sid && a.text === 'No activity while working');
   assert.deepEqual(look('one'), ['working', 'Waiting on background agent: Watch the deploy', null]);
@@ -462,7 +466,7 @@ test('a busy session whose turn has ended waits on the background agents and wor
   assert.deepEqual(look('moved'), ['working', 'Waiting on background agent: Check the logs', null]);
   assert.deepEqual(look('again'), ['working', 'Waiting on background agent: Watch the deploy', null]);
   assert.equal(b.view(snap, 'again').since, Q0 + 3000);
-  for (const k of ['flow-done', 'woken', 'messaged', 'skill', 'cut-woken']) assert.deepEqual(look(k), ['working', 'Thinking', 'stalled'], k);
+  for (const k of ['flow-done', 'woken', 'messaged', 'skill', 'shell-report', 'cut-woken', 'unknown']) assert.deepEqual(look(k), ['working', 'Thinking', 'stalled'], k);
   assert.deepEqual(look('shelled'), ['working', 'Thinking', 'stalled']);
   assert.deepEqual(look('screen'), ['working', 'Waiting on background agent: Watch the deploy', null]);
   assert.deepEqual(['screen-done', 'screen-compact'].map((k) => b.view(snap, k).state), ['your-turn', 'your-turn']);
