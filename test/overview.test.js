@@ -9,7 +9,7 @@ const test = require('node:test');
 const { sleep, SERVER_TEST_MS } = require('./helpers/board');
 
 const SCRIPT = path.join(__dirname, '..', 'overview');
-const runnable = ['linux', 'darwin'].includes(process.platform) && cp.spawnSync('ps', ['-A', '-ww', '-o', 'pid=', '-o', 'args=']).status === 0;
+const runnable = ['linux', 'darwin'].includes(process.platform) && cp.spawnSync('bash', ['-c', ':']).status === 0 && cp.spawnSync('ps', ['-A', '-ww', '-o', 'pid=', '-o', 'args='], { stdio: 'ignore' }).status === 0;
 const OPTS = { timeout: SERVER_TEST_MS, skip: !runnable && process.env.CI !== 'true' && 'needs bash and a ps that takes -A -ww' };
 const URL = 'http://127.0.0.1:3999/';
 // the script starts the node on PATH: this one, so each Node version under test runs it
@@ -17,6 +17,7 @@ const env = Object.assign({}, process.env, { PATH: path.dirname(process.execPath
 
 // the script finds its server by its own folder, so a copy runs a stand-in that never touches the real board
 function copy(t, onTerm) {
+  assert.ok(runnable, 'needs bash and a ps that takes -A -ww');
   // the script resolves its own folder, and macOS's temp folder is a symlink
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'overview-')));
   fs.copyFileSync(SCRIPT, path.join(dir, 'overview'));
@@ -26,7 +27,7 @@ function copy(t, onTerm) {
   const run = (cmd) => cp.spawnSync('bash', [path.join(dir, 'overview'), cmd], { encoding: 'utf8', timeout: 20000, env });
   const appears = async (name) => {
     for (let i = 0; i < 250 && !fs.existsSync(path.join(dir, name)); i++) await sleep(20);
-    assert.ok(fs.existsSync(path.join(dir, name)), name);
+    assert.ok(fs.existsSync(path.join(dir, name)), name + ' never appeared');
   };
   t.after(() => {
     // by the folder, so a script that cannot find its server still leaves nothing running
@@ -102,8 +103,9 @@ test('stop waits only for the server it stopped, not for a copy started while it
 test('the server is found by its arguments under this Node version, and a shell or another program given its path is not', OPTS, async (t) => {
   const { dir, run, appears } = copy(t, '');
   const server = path.join(dir, 'server.js');
-  cp.spawn('bash', ['-c', 'while :; do sleep 1; done', 'x', '/usr/bin/node', server], { stdio: 'ignore' });
+  cp.spawn('bash', ['-c', ': > "${2%/*}/shell"; while :; do sleep 1; done', 'x', '/usr/bin/node', server], { stdio: 'ignore' });
   cp.spawn('bash', ['-c', 'exec -a less "$0" "$1"', process.execPath, server], { stdio: 'ignore' });
+  await appears('shell');
   await appears('ready');
   assert.equal(run('status').stdout.trim(), 'Not running');
   const first = run('start');
