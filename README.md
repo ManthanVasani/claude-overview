@@ -93,7 +93,7 @@ Next time, in that folder (`cd ~/claude-overview`):
 
 - `./overview start` starts it. When it is already running, it only says so.
 - `./overview status` says whether it is running.
-- `./overview stop` stops it.
+- `./overview stop` stops it, and returns once it has closed.
 
 The board's own messages, errors included, go to `overview.log` in that folder. It does not start again by itself
 after you restart the computer. On WSL, it stops when WSL does, which can be soon after the last WSL window closes.
@@ -112,8 +112,6 @@ To update it, in that folder:
 git pull
 ./overview start
 ```
-
-If `start` says it is already running, the old copy is still closing: run `./overview start` again a moment later.
 
 ### Use another port
 

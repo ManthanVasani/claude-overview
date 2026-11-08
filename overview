@@ -41,7 +41,11 @@ case "${1:-status}" in
   stop)
     running="$(pids)"
     if [ -z "$running" ]; then echo "Not running"; exit 0; fi
-    kill $running && echo "Stopped (pid $running)"
+    kill $running
+    # a start right after this would find the old copy still closing
+    for _ in $(seq 50); do [ -z "$(pids)" ] && break; sleep 0.1; done
+    if [ -n "$(pids)" ]; then echo "Still closing (pid $running): run stop again in a moment"; exit 1; fi
+    echo "Stopped (pid $running)"
     ;;
   status)
     running="$(pids)"
