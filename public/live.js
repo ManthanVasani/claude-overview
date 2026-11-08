@@ -788,8 +788,8 @@
     let html;
     if (h.shell) {
       const sh = h.shell;
-      const word = sh.state === 'running' ? 'Running for ' + dur(now() - sh.startedAt) : sh.state === 'failed' ? (sh.why || 'Failed') + ' (exit ' + (sh.exit != null ? sh.exit : '?') + ')' : sh.state === 'died' ? 'Killed' : 'Finished' + (sh.doneAt ? ' in ' + dur(sh.doneAt - sh.startedAt) : '');
-      html = '<div class="tt-h"><span class="sw" style="background:#aab6c8"></span>Background command<span class="tt-s ' + (sh.state === 'running' ? 'open' : sh.state === 'done' ? 'ok' : 'bad') + '">' + esc(word) + '</span></div>' +
+      const word = sh.state === 'running' ? 'Running for ' + dur(now() - sh.startedAt) : sh.state === 'failed' ? (sh.why || 'Failed') + ' (exit ' + (sh.exit != null ? sh.exit : '?') + ')' : sh.state === 'died' ? 'Killed' : sh.state === 'stopped' ? 'Stopped' + (sh.doneAt ? ' after ' + dur(sh.doneAt - sh.startedAt) : '') : 'Finished' + (sh.doneAt ? ' in ' + dur(sh.doneAt - sh.startedAt) : '');
+      html = '<div class="tt-h"><span class="sw" style="background:#aab6c8"></span>Background command<span class="tt-s ' + (sh.state === 'running' ? 'open' : sh.state === 'done' ? 'ok' : sh.state === 'stopped' ? 'cut' : 'bad') + '">' + esc(word) + '</span></div>' +
         '<div class="tt-l">' + esc(sh.desc) + '</div><div class="tt-w">' + esc(h.row.s ? h.row.s.name : '') + ' · started ' + esc(clock(sh.startedAt, true)) + '</div>';
     } else {
       const st = h.st;
