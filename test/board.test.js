@@ -429,9 +429,8 @@ test('a busy session whose turn has ended waits on the background agents and wor
   b.agent('hook-quiet', 'g26', meta('tuHq', 'Watch the deploy'), working);
   b.session('hook-held', busy, [prompt(Q0), ...start('tuHh', 'Watch the deploy'), said(Q0 + 2000), hook(Q0 + 2100, 'hook_additional_context', 'Stop'), hook(Q0 + 2150, 'hook_stopped_continuation', 'Stop'), hooked(Q0 + 2200, ['Check the tests'], true)]);
   b.agent('hook-held', 'g27', meta('tuHh', 'Watch the deploy'), working);
-  const sub = (d) => Object.assign(d, { isSidechain: true });
   b.session('agent-hooked', busy, [prompt(Q0), ...start('tuAh', 'Review the diff'), said(Q0 + 2000)]);
-  b.agent('agent-hooked', 'g28', meta('tuAh', 'Review the diff'), [prompt(Q0 + 1200), said(Date.now() - 6000), sub(hook(Date.now() - 5500, 'hook_additional_context', 'SubagentStop')), sub(hooked(Date.now() - 5000, ['Check the tests'], false))]);
+  b.agent('agent-hooked', 'g28', meta('tuAh', 'Review the diff'), [prompt(Q0 + 1200), said(Date.now() - 6000), hook(Date.now() - 5500, 'hook_additional_context', 'SubagentStop'), hooked(Date.now() - 5000, ['Check the tests'], false)]);
   const screen = { status: 'waiting', waitingFor: 'dialog open', statusUpdatedAt: Q0 + 2500 };
   b.session('screen', screen, [prompt(Q0), ...start('tuScr', 'Watch the deploy'), said(Q0 + 2000)]);
   b.agent('screen', 'g19', meta('tuScr', 'Watch the deploy'), working);
