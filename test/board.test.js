@@ -535,7 +535,7 @@ test('a compaction ends a stop or a retry by an API error: a stopped session is 
   assert.deepEqual([b.view(snap, 'retried').state, b.view(snap, 'retried').act.label], ['working', 'Waiting on background agent: Watch the deploy']);
 });
 
-test('every part of the board reads the same turn end: a turn ended by an error or an interrupt waits on its agents, a report or a Stop hook that wakes a session under a screen it opened leaves it working, only an interrupted turn says you interrupted it, and a refusal ends no turn, since Claude Code goes on after it', { timeout: SERVER_TEST_MS, skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
+test('every part of the board reads the same turn end: a turn ended by an error or an interrupt waits on its agents, a report or a Stop hook that wakes a session under a screen it opened leaves it working, a report Claude Code only writes down wakes nothing, only an interrupted turn says you interrupted it, and a refusal ends no turn, since Claude Code goes on after it', { timeout: SERVER_TEST_MS, skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
   const Q0 = Date.now() - 4 * 60000;
   const b = new Board('turnend-', { startedAt: Q0 - 5000 });
   t.after(() => b.stop());
@@ -546,7 +546,8 @@ test('every part of the board reads the same turn end: a turn ended by an error 
   const start = (id) => [call(Q0 + 1000, 'Agent', { description: 'Watch the deploy', prompt: 'watch', subagent_type: 'general-purpose', run_in_background: true }, id), result(Q0 + 1100, id, { status: 'async_launched', description: 'Watch the deploy' }, 'Async agent launched successfully.')];
   const meta = (id) => ({ description: 'Watch the deploy', agentType: 'general-purpose', toolUseId: id, requestShape: 'background' });
   const working = [prompt(Q0 + 1200), call(Date.now() - 100, 'Bash', { command: 'tail deploy.log' })];
-  const typed = (ms, content, isMeta) => ({ type: 'user', isMeta, timestamp: at(ms), message: { role: 'user', content } });
+  const typed = (ms, content) => ({ type: 'user', timestamp: at(ms), message: { role: 'user', content } });
+  const told = (ms) => Object.assign(notification(ms, 'gtold'), { queueTranscriptOnly: true, origin: { kind: 'task-notification' } });
   const cut = (ms) => typed(ms, '[Request interrupted by user]');
   const hook = (ms) => ({ type: 'attachment', timestamp: at(ms), attachment: { type: 'hook_additional_context', hookEvent: 'Stop', hookName: 'Stop', content: ['Check the tests'], toolUseID: 'h' + ms } });
   const hooked = (ms) => ({ type: 'system', subtype: 'stop_hook_summary', timestamp: at(ms), hookCount: 1, hookInfos: [{ command: 'check.sh' }], hookErrors: [], hookAdditionalContext: ['Check the tests'], preventedContinuation: false, stopReason: '', hasOutput: true, level: 'suggestion', toolUseID: 'h' + ms });
@@ -560,22 +561,25 @@ test('every part of the board reads the same turn end: a turn ended by an error 
     'screen-woken': [screen, [said(Q0 + 2000), notification(Q0 + 3000, 'gdone')]],
     'screen-hooked': [screen, [said(Q0 + 2000), hook(Q0 + 2900), hooked(Q0 + 3000)]],
     'screen-done': [screen, [said(Q0 + 2000)]],
+    'screen-told': [screen, [said(Q0 + 2000), told(Q0 + 3000)]],
+    'told-waiting': [busy, [said(Q0 + 2000), told(Q0 + 3000)]],
   };
   for (const [k, [reg, lines]] of Object.entries(runs)) {
     b.session(k, reg, [prompt(Q0), ...start('tu-' + k), ...lines]);
-    b.agent(k, 'g-' + k, meta('tu-' + k), k === 'screen-done' ? [prompt(Q0 + 1200), said(Q0 + 1500)] : working);
+    b.agent(k, 'g-' + k, meta('tu-' + k), k === 'screen-done' || k === 'screen-told' ? [prompt(Q0 + 1200), said(Q0 + 1500)] : working);
   }
   b.session('cut', idle, [prompt(Q0), call(Q0 + 500, 'Bash', { command: 'make' }), cut(Q0 + 1000)]);
+  b.session('cut-then-told', idle, [prompt(Q0), call(Q0 + 500, 'Bash', { command: 'make' }), cut(Q0 + 1000), told(Q0 + 2000)]);
   b.session('cut-then-report', idle, [prompt(Q0), call(Q0 + 500, 'Bash', { command: 'make' }), cut(Q0 + 1000), notification(Q0 + 2000, 'gdone'), said(Q0 + 3000)]);
   b.session('agent-refused', idle, [prompt(Q0), ...start('tu-ar'), said(Q0 + 2000)]);
   b.agent('agent-refused', 'g-ar', meta('tu-ar'), [prompt(Q0 + 1200), ...reply(Q0 + 1500, { stop: 'refusal' })]);
   await b.start();
-  const keys = [...Object.keys(runs), 'cut', 'cut-then-report', 'agent-refused'];
+  const keys = [...Object.keys(runs), 'cut', 'cut-then-told', 'cut-then-report', 'agent-refused'];
   const snap = await b.waitFor('every session and its agent', (st) => keys.every((k) => b.view(st, k)) && b.view(st, 'agent-refused').agents.length === 1);
   const look = (k) => { const v = b.view(snap, k); return [v.state, v.act && v.act.label, v.trouble && v.trouble.kind]; };
-  for (const k of ['failed', 'retry-cut']) assert.deepEqual([...look(k), b.view(snap, k).since], ['working', 'Waiting on background agent: Watch the deploy', null, Q0 + 2000], k);
+  for (const k of ['failed', 'retry-cut', 'told-waiting']) assert.deepEqual([...look(k), b.view(snap, k).since], ['working', 'Waiting on background agent: Watch the deploy', null, Q0 + 2000], k);
   for (const k of ['refused', 'screen-woken', 'screen-hooked']) assert.deepEqual(look(k), ['working', 'Thinking', null], k);
-  assert.equal(b.view(snap, 'screen-done').state, 'your-turn');
-  assert.deepEqual(['cut', 'cut-then-report'].map((k) => [b.view(snap, k).state, b.view(snap, k).reason]), [['your-turn', 'You interrupted it'], ['your-turn', null]]);
+  assert.deepEqual(['screen-done', 'screen-told'].map((k) => b.view(snap, k).state), ['your-turn', 'your-turn']);
+  assert.deepEqual(['cut', 'cut-then-told', 'cut-then-report'].map((k) => [b.view(snap, k).state, b.view(snap, k).reason]), [['your-turn', 'You interrupted it'], ['your-turn', 'You interrupted it'], ['your-turn', null]]);
   assert.equal(b.view(snap, 'agent-refused').agents[0].state, 'running');
 });
