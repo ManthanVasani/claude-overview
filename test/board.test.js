@@ -371,7 +371,7 @@ test('who started a session is kept while it or a session it started is on the b
   assert.deepEqual(noteStarters(known, [c({ pid: 8 }), d], 2 * K + 1), { d: 'c' });
 });
 
-test('a background command or agent stopped with TaskStop shows stopped, also once its session runs in a new process, and a stop that failed changes nothing', { timeout: SERVER_TEST_MS, skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
+test('a background command or agent stopped with TaskStop shows stopped, also when an agent stopped it and once its session runs in a new process, and a failed stop or the output of another tool naming a task changes nothing', { timeout: SERVER_TEST_MS, skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
   const Q0 = Date.now() - 4 * 60000;
   const b = new Board('taskstop-', { startedAt: Q0 - 5000 });
   t.after(() => b.stop());
@@ -384,11 +384,16 @@ test('a background command or agent stopped with TaskStop shows stopped, also on
   b.session('agent', idle, [prompt(Q0), call(Q0 + 1000, 'Agent', { description: 'Watch the deploy', prompt: 'watch', subagent_type: 'general-purpose', run_in_background: true }, 'tuAgS'), result(Q0 + 1100, 'tuAgS', { status: 'async_launched', agentId: 'gstop1', description: 'Watch the deploy' }, 'Async agent launched successfully.'), ...stop('gstop1', 'local_agent'), said(Q0 + 2500)]);
   b.agent('agent', 'gstop1', { description: 'Watch the deploy', agentType: 'general-purpose', toolUseId: 'tuAgS', requestShape: 'background' }, [prompt(Q0 + 1200), call(Q0 + 1500, 'Bash', { command: 'tail deploy.log' })]);
   b.session('failed', idle, [prompt(Q0), ...shell('tuS3', 'bstop3'), ...failed('bstop3'), said(Q0 + 2500)]);
+  b.session('inside', idle, [prompt(Q0), call(Q0 + 500, 'Agent', { description: 'Run the checks', prompt: 'check', subagent_type: 'general-purpose' }, 'tuAgI'), result(Q0 + 3000, 'tuAgI', null, 'checked'), said(Q0 + 3500)]);
+  b.agent('inside', 'gstop2', { description: 'Run the checks', agentType: 'general-purpose', toolUseId: 'tuAgI' }, [prompt(Q0 + 600), ...shell('tuS4', 'bstop4'), ...stop('bstop4', 'local_bash').map((x) => (x.toolUseResult ? result(Q0 + 2100, 'tuStopbstop4', null, JSON.stringify(x.toolUseResult)) : x)), call(Q0 + 2200, 'Bash', { command: 'sleep 600', description: 'Wait again', run_in_background: true }, 'tuS5'), launched(Q0 + 2300, 'tuS5', 'bkeep1'), call(Q0 + 2400, 'Bash', { command: 'cat status.json', description: 'Read the status' }, 'tuCat'), result(Q0 + 2450, 'tuCat', null, JSON.stringify({ task_id: 'bkeep1', state: 'ok' })), said(Q0 + 2500)]);
   await b.start();
-  const snap = await b.waitFor('all four sessions', (st) => ['stopped', 'resumed', 'agent', 'failed'].every((k) => b.view(st, k)));
+  const snap = await b.waitFor('all five sessions', (st) => ['stopped', 'resumed', 'agent', 'failed', 'inside'].every((k) => b.view(st, k)));
   const shellOf = (k) => (b.view(snap, k).shells || []).map((x) => [x.id, x.state, x.doneAt]);
   assert.deepEqual(shellOf('stopped'), [['bstop1', 'stopped', Q0 + 2100]]);
   assert.deepEqual(shellOf('resumed'), [['bstop2', 'stopped', Q0 + 2100]]);
   assert.deepEqual(b.view(snap, 'agent').agents.map((x) => [x.desc, x.state, x.reason]), [['Watch the deploy', 'stopped', 'Stopped']]);
   assert.deepEqual(shellOf('failed').map((x) => x.slice(0, 2)), [['bstop3', 'ended']]);
+  const inside = shellOf('inside');
+  assert.deepEqual(inside.find((x) => x[0] === 'bstop4'), ['bstop4', 'stopped', Q0 + 2100]);
+  assert.deepEqual(inside.find((x) => x[0] === 'bkeep1').slice(0, 2), ['bkeep1', 'ended']);
 });
