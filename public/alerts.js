@@ -7,8 +7,6 @@
   // a row can drop out for one poll and come back with the same key
   const FORGET_MS = 3600000;
   const MUTED_KEY = 'claude-overview-muted';
-  // renewed only once an hour old, so a mute is kept at least an hour after the last snapshot that showed it
-  const MUTE_KEEP_MS = 2 * FORGET_MS;
 
   const $ = (id) => document.getElementById(id);
   const btn = $('alerts-btn');
@@ -61,14 +59,16 @@
   function runOf(s) { return s.id + '|' + s.pid + '|' + s.startedAt; }
   function isMuted(s) { return !!s && muted.has(runOf(s)); }
   function mute(s, on) {
-    editMuted(() => { if (on) muted.set(runOf(s), Date.now()); else muted.delete(runOf(s)); });
+    editMuted(() => { if (on) muted.set(runOf(s), 0); else muted.delete(runOf(s)); });
     for (const fn of subs) fn();
   }
-  function renewMuted(runs, t) {
+  // a quiet board can send nothing for hours, so the hour runs from the first snapshot without the run
+  function trackMuted(runs, t) {
     let changed = false;
-    for (const [k, at] of muted) {
-      if (runs.has(k) ? t - at <= FORGET_MS : t - at <= MUTE_KEEP_MS) continue;
-      if (runs.has(k)) muted.set(k, t);
+    for (const [k, gone] of muted) {
+      if (runs.has(k) ? !gone : gone && t - gone <= FORGET_MS) continue;
+      if (runs.has(k)) muted.set(k, 0);
+      else if (!gone) muted.set(k, t);
       else muted.delete(k);
       changed = true;
     }
@@ -77,7 +77,7 @@
   function keepMuted(list, t) {
     if (!muted.size || !list.length) return;
     const runs = new Set(list.map(runOf));
-    if (renewMuted(runs, t)) editMuted(() => renewMuted(runs, t));
+    if (trackMuted(runs, t)) editMuted(() => trackMuted(runs, t));
   }
   function permission() { return supported ? Notification.permission : 'unsupported'; }
   function live() { return prefs.on && permission() === 'granted'; }
@@ -283,7 +283,7 @@
     if (e.key !== MUTED_KEY && e.key !== null) return;
     const was = [...muted.keys()].sort().join();
     if (!unsaved) loadMuted();
-    // another tab renewing the times changes nothing on the board
+    // only the set of muted runs shows on the board
     if ([...muted.keys()].sort().join() !== was) for (const fn of subs) fn();
   });
 

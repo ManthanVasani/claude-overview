@@ -134,22 +134,24 @@ test('a mute holds for one process of a session, so the session run again in a n
   assert.equal(p.alerts.muted(session('a', 'working', { pid: 200, startedAt: 2 })), false);
 });
 
-test('a mute is kept while its process is on the board or briefly off it, and forgotten an hour after it left, never on an empty board', () => {
+test('a mute is kept while its process is on the board or less than an hour off it, however long the board was quiet, and forgotten after that, never on an empty board', () => {
   const p = page([]);
   const a = session('a', 'working');
   const b = session('b', 'working');
+  const died = session('a', 'died', { alive: false });
   p.snap([a, b]);
   p.alerts.mute(a, true);
   p.tick(3 * 3600e3);
-  p.snap([a, b]);
-  p.tick(50 * 60e3);
-  p.snap([a, b]);
-  p.tick(15 * 60e3);
   p.snap([b]);
   p.tick(30e3);
-  p.snap([session('a', 'died', { alive: false }), b], [stopped('a')]);
+  p.snap([died, b], [stopped('a')]);
   assert.deepEqual(p.sent, []);
-  p.tick(2 * 3600e3 + 1);
+  p.tick(3 * 3600e3);
+  p.snap([b]);
+  p.tick(59 * 60e3);
+  p.snap([b]);
+  assert.ok(p.alerts.muted(a));
+  p.tick(60e3 + 1);
   p.snap([]);
   assert.ok(p.alerts.muted(a));
   p.snap([b]);
@@ -157,7 +159,7 @@ test('a mute is kept while its process is on the board or briefly off it, and fo
   assert.equal(p.store.get('claude-overview-muted'), '{}');
 });
 
-test('a mute or unmute in one tab applies in the others and redraws them, and a renewed time does not', () => {
+test('a mute or unmute in one tab applies in the others and redraws them, and its run leaving the board does not', () => {
   const one = page([]);
   const two = page([], { store: one.store });
   const a = session('a', 'working');
@@ -170,8 +172,8 @@ test('a mute or unmute in one tab applies in the others and redraws them, and a 
   one.alerts.mute(a, true);
   two.storage('claude-overview-muted');
   assert.ok(two.alerts.muted(a));
-  one.tick(2 * 3600e3);
-  one.snap([a]);
+  one.snap([session('b', 'working')]);
+  assert.notEqual(one.store.get('claude-overview-muted'), JSON.stringify({ 'a|100|1': 0 }));
   two.storage('claude-overview-muted');
   one.alerts.mute(a, false);
   two.storage(null);
@@ -179,7 +181,7 @@ test('a mute or unmute in one tab applies in the others and redraws them, and a 
   assert.deepEqual([own, other], [2, 2]);
 });
 
-test('a tab that missed another tab\'s mute keeps it when it mutes or renews one of its own', () => {
+test('a tab that missed another tab\'s mute keeps it when it mutes one or saves that one has left the board', () => {
   const one = page([]);
   const two = page([], { store: one.store });
   const list = ['a', 'b', 'c'].map((id) => session(id, 'working'));
@@ -191,9 +193,9 @@ test('a tab that missed another tab\'s mute keeps it when it mutes or renews one
   assert.deepEqual(stored(), ['a|100|1', 'b|100|1']);
   assert.ok(two.alerts.muted(list[0]));
   one.alerts.mute(list[2], true);
-  two.tick(2 * 3600e3);
-  two.snap(list);
+  two.snap([list[0], list[2]]);
   assert.deepEqual(stored(), ['a|100|1', 'b|100|1', 'c|100|1']);
+  assert.ok(JSON.parse(one.store.get('claude-overview-muted'))['b|100|1'] > 0);
 });
 
 test('when the storage cannot be written, a mute lasts as long as the page', () => {
@@ -213,8 +215,7 @@ test('when the storage stops being readable, the page keeps its mutes and does n
   p.snap([a]);
   p.alerts.mute(a, true);
   p.blockReads();
-  p.tick(2 * 3600e3);
-  p.snap([a]);
+  p.snap([session('b', 'working')]);
   p.snap([waiting('a', 6)]);
   assert.ok(p.alerts.muted(a));
   assert.deepEqual(p.sent, []);
