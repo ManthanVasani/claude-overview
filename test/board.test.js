@@ -376,7 +376,7 @@ test('a busy session whose turn has ended waits on the background agents and wor
   const b = new Board('bgwait-', { startedAt: Q0 - 5000 });
   t.after(() => b.stop());
   const busy = { status: 'busy', statusUpdatedAt: Q0 };
-  const start = (id, desc) => [call(Q0 + 1000, 'Agent', { description: desc, prompt: 'watch', subagent_type: 'general-purpose', run_in_background: true }, id), result(Q0 + 1100, id, null, 'Async agent launched successfully.')];
+  const start = (id, desc) => [call(Q0 + 1000, 'Agent', { description: desc, prompt: 'watch', subagent_type: 'general-purpose', run_in_background: true }, id), result(Q0 + 1100, id, { status: 'async_launched', description: desc }, 'Async agent launched successfully.')];
   const meta = (id, desc) => ({ description: desc, agentType: 'general-purpose', toolUseId: id, requestShape: 'background' });
   const working = [prompt(Q0 + 1200), call(Date.now() - 100, 'Bash', { command: 'tail deploy.log' })];
   const report = '<task-notification>\n<task-id>gdone</task-id>\n<status>completed</status>\n</task-notification>';
@@ -475,7 +475,7 @@ test('a busy session whose turn has ended waits on the background agents and wor
   assert.deepEqual(['one', 'two', 'flow', 'mixed', 'cut', 'orphan', 'stopped', 'retired', 'moved', 'again', 'local', 'screen', 'shelled', 'none'].map(stalled), [false, false, false, false, false, false, false, false, false, false, false, false, true, true]);
 });
 
-test('a session stopped by an API error is your turn again once a compaction has run, and the summary is not your prompt', { timeout: SERVER_TEST_MS, skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
+test('a compaction ends a stop or a retry by an API error: a stopped session is your turn again, a retrying one waits on its agent, and the summary is not your prompt', { timeout: SERVER_TEST_MS, skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
   const Q0 = Date.now() - 4 * 60000;
   const b = new Board('compact-', { startedAt: Q0 - 5000 });
   t.after(() => b.stop());
@@ -484,7 +484,12 @@ test('a session stopped by an API error is your turn again once a compaction has
   const summary = Object.assign(typed(Q0 + 2500, 'This session is being continued from a previous conversation that ran out of context.'), { isCompactSummary: true });
   b.session('compacted', { status: 'idle', statusUpdatedAt: Q0 + 3000 }, [prompt(Q0), tooLong, typed(Q0 + 2000, '<command-name>/compact</command-name>'), summary, typed(Q0 + 2600, '<local-command-stdout>Compacted</local-command-stdout>')]);
   b.session('stopped', { status: 'idle', statusUpdatedAt: Q0 + 3000 }, [prompt(Q0), tooLong]);
+  const retry = (at) => ({ type: 'system', subtype: 'api_error', timestamp: new Date(at).toISOString(), error: { message: 'Overloaded' }, retryAttempt: 1, maxRetries: 10 });
+  const launch = [call(Q0 + 500, 'Agent', { description: 'Watch the deploy', prompt: 'watch', subagent_type: 'general-purpose', run_in_background: true }, 'tuRt'), result(Q0 + 600, 'tuRt', { status: 'async_launched', description: 'Watch the deploy' }, 'Async agent launched successfully.')];
+  b.session('retried', { status: 'busy', statusUpdatedAt: Q0 + 3000 }, [prompt(Q0), ...launch, retry(Q0 + 1500), typed(Q0 + 1800, '[Request interrupted by user]'), typed(Q0 + 2000, '<command-name>/compact</command-name>'), Object.assign(typed(Q0 + 2500, summary.message.content), { isCompactSummary: true })]);
+  b.agent('retried', 'g1', { description: 'Watch the deploy', agentType: 'general-purpose', toolUseId: 'tuRt', requestShape: 'background' }, [prompt(Q0 + 700), call(Date.now() - 100, 'Bash', { command: 'tail deploy.log' })]);
   await b.start();
-  const snap = await b.waitFor('both sessions', (st) => b.view(st, 'compacted') && b.view(st, 'stopped'));
+  const snap = await b.waitFor('all three sessions', (st) => ['compacted', 'stopped', 'retried'].every((k) => b.view(st, k)));
   assert.deepEqual(['compacted', 'stopped'].map((k) => [b.view(snap, k).state, b.view(snap, k).prompt]), [['your-turn', 'do the work'], ['error', 'do the work']]);
+  assert.deepEqual([b.view(snap, 'retried').state, b.view(snap, 'retried').act.label], ['working', 'Waiting on background agent: Watch the deploy']);
 });
