@@ -80,8 +80,9 @@ contrast theme or person using assistive technology has tried it yet.
 
 ### Screen readers
 
-- A card is announced by its name and state only. What it is doing, its branch, model and counts are only in its
-  details, and the board does not say which session an agent, workflow or shell belongs to.
+- A card is announced only by its name, its state and whether its session is hidden or muted. What it is doing, its
+  branch, model and counts are only in its details, and the board does not say which session an agent, workflow or shell
+  belongs to.
 - The timeline has no text version. The Touching list and the most recent tool calls are text, in the side column,
   which a narrow window does not show (see below). The usage chart's values per day show only on mouse hover, and so
   do each account's organisation and the notes on what Usage's figures count.
@@ -117,9 +118,9 @@ contrast theme or person using assistive technology has tried it yet.
 
 - If the page is narrower than 1180 CSS pixels, the side column with Touching and the live feed is not shown, and S
   does not bring it back. At 200% zoom that is any window narrower than 2360 pixels at normal zoom.
-- In a window 640 pixels wide or less, the bell button is hidden, so desktop alerts cannot be turned on or off there,
-  and at 400 pixels or less so is the full-screen button. When the timeline is 560 pixels wide or less, its filters
-  are hidden.
+- In a window 640 pixels wide or less, the bell button is hidden, so desktop alerts cannot be turned on or off there (a
+  session's own bell, in its details, still mutes it), and at 400 pixels or less so is the full-screen button. When the
+  timeline is 560 pixels wide or less, its filters are hidden.
 - In a window the size 400% zoom gives (measured at 320 by 256 CSS pixels), the board is covered by its own controls.
 - In a narrow window, a focused card can sit under the Needs attention list or past the edge, and the board does not
   move to show it.
