@@ -371,7 +371,7 @@ test('who started a session is kept while it or a session it started is on the b
   assert.deepEqual(noteStarters(known, [c({ pid: 8 }), d], 2 * K + 1), { d: 'c' });
 });
 
-test('a busy session whose turn has ended waits on the background agents and workflows still running for it, also under a screen it opened, until a report, a message or a Stop hook\'s context wakes it, and is stalled once none runs', { timeout: SERVER_TEST_MS, skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
+test('a busy session whose turn has ended waits on the background agents and workflows still running for it, also under a screen it opened, until a report, a message or a Stop hook\'s context wakes it, counting an agent its Stop hook sent back to work, and is stalled once none runs', { timeout: SERVER_TEST_MS, skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
   const Q0 = Date.now() - 20 * 60000;
   const b = new Board('bgwait-', { startedAt: Q0 - 5000 });
   t.after(() => b.stop());
@@ -384,7 +384,8 @@ test('a busy session whose turn has ended waits on the background agents and wor
   const peer = (t) => ({ type: 'user', isMeta: true, timestamp: new Date(t).toISOString(), message: { role: 'user', content: 'Another Claude session sent a message' } });
   const typed = (t, content, isMeta) => ({ type: 'user', isMeta, timestamp: new Date(t).toISOString(), message: { role: 'user', content } });
   const compacted = (t) => Object.assign(typed(t, 'This session is being continued from a previous conversation that ran out of context.'), { isCompactSummary: true });
-  const hook = (t, type, hookEvent) => ({ type: 'attachment', timestamp: new Date(t).toISOString(), attachment: { type, hookEvent, hookName: hookEvent, content: 'Check the tests', toolUseID: 'h' + t } });
+  const hook = (t, type, hookEvent) => ({ type: 'attachment', timestamp: new Date(t).toISOString(), attachment: { type, hookEvent, hookName: hookEvent, content: ['Check the tests'], toolUseID: 'h' + t } });
+  const hooked = (t, context, prevented) => ({ type: 'system', subtype: 'stop_hook_summary', timestamp: new Date(t).toISOString(), hookCount: 1, hookInfos: [{ command: 'check.sh' }], hookErrors: [], hookAdditionalContext: context, preventedContinuation: prevented, stopReason: '', hasOutput: true, level: 'suggestion', toolUseID: 'h' + t });
   b.session('one', busy, [prompt(Q0), ...start('tuOne', 'Watch the deploy'), said(Q0 + 2000)]);
   b.agent('one', 'g1', meta('tuOne', 'Watch the deploy'), working);
   b.agent('one', 'g1b', { description: 'Read the logs', agentType: 'general-purpose', toolUseId: 'tuSub', parentAgentId: 'g1', spawnDepth: 2 }, working);
@@ -422,10 +423,15 @@ test('a busy session whose turn has ended waits on the background agents and wor
   b.agent('local', 'g17', meta('tuLc', 'Watch the deploy'), working);
   b.session('skill', busy, [prompt(Q0), ...start('tuSk', 'Watch the deploy'), said(Q0 + 2000), typed(Q0 + 2900, '<command-message>review</command-message>\n<command-name>/review</command-name>'), typed(Q0 + 3000, 'Review the open pull request.', true)]);
   b.agent('skill', 'g18', meta('tuSk', 'Watch the deploy'), working);
-  b.session('hooked', busy, [prompt(Q0), ...start('tuHk', 'Watch the deploy'), said(Q0 + 2000), hook(Q0 + 2900, 'hook_success', 'Stop'), hook(Q0 + 3000, 'hook_additional_context', 'Stop')]);
+  b.session('hooked', busy, [prompt(Q0), ...start('tuHk', 'Watch the deploy'), said(Q0 + 2000), hook(Q0 + 2900, 'hook_success', 'Stop'), hook(Q0 + 2950, 'hook_additional_context', 'Stop'), hooked(Q0 + 3000, ['Check the tests'], false)]);
   b.agent('hooked', 'g25', meta('tuHk', 'Watch the deploy'), working);
-  b.session('hook-other', busy, [prompt(Q0), ...start('tuHo', 'Watch the deploy'), said(Q0 + 2000), hook(Q0 + 2100, 'hook_success', 'Stop'), hook(Q0 + 2200, 'hook_system_message', 'Stop'), compacted(Q0 + 2500), hook(Q0 + 2600, 'hook_additional_context', 'SessionStart')]);
-  b.agent('hook-other', 'g26', meta('tuHo', 'Watch the deploy'), working);
+  b.session('hook-quiet', busy, [prompt(Q0), ...start('tuHq', 'Watch the deploy'), said(Q0 + 2000), hook(Q0 + 2100, 'hook_success', 'Stop'), hook(Q0 + 2150, 'hook_system_message', 'Stop'), hooked(Q0 + 2200, [], false)]);
+  b.agent('hook-quiet', 'g26', meta('tuHq', 'Watch the deploy'), working);
+  b.session('hook-held', busy, [prompt(Q0), ...start('tuHh', 'Watch the deploy'), said(Q0 + 2000), hook(Q0 + 2100, 'hook_additional_context', 'Stop'), hook(Q0 + 2150, 'hook_stopped_continuation', 'Stop'), hooked(Q0 + 2200, ['Check the tests'], true)]);
+  b.agent('hook-held', 'g27', meta('tuHh', 'Watch the deploy'), working);
+  const sub = (d) => Object.assign(d, { isSidechain: true });
+  b.session('agent-hooked', busy, [prompt(Q0), ...start('tuAh', 'Review the diff'), said(Q0 + 2000)]);
+  b.agent('agent-hooked', 'g28', meta('tuAh', 'Review the diff'), [prompt(Q0 + 1200), said(Date.now() - 6000), sub(hook(Date.now() - 5500, 'hook_additional_context', 'SubagentStop')), sub(hooked(Date.now() - 5000, ['Check the tests'], false))]);
   const screen = { status: 'waiting', waitingFor: 'dialog open', statusUpdatedAt: Q0 + 2500 };
   b.session('screen', screen, [prompt(Q0), ...start('tuScr', 'Watch the deploy'), said(Q0 + 2000)]);
   b.agent('screen', 'g19', meta('tuScr', 'Watch the deploy'), working);
@@ -447,10 +453,10 @@ test('a busy session whose turn has ended waits on the background agents and wor
   b.agent('mid', 'g7', meta('tuMid', 'Watch the deploy'), working);
   b.session('none', busy, [prompt(Q0), ...start('tuNone', 'Watch the deploy'), said(Q0 + 2000)]);
   b.agent('none', 'g5', meta('tuNone', 'Watch the deploy'), [prompt(Q0 + 1200), said(Q0 + 1500)]);
-  for (const k of ['one', 'two', 'flow', 'cut', 'shelled', 'orphan', 'stopped', 'retired', 'mixed', 'flow-done', 'moved', 'screen', 'screen-done', 'cut-compact', 'screen-compact', 'hook-other', 'none']) fs.utimesSync(b.transcript(k), new Date(Q0 + 2000), new Date(Q0 + 2000));
+  for (const k of ['one', 'two', 'flow', 'cut', 'shelled', 'orphan', 'stopped', 'retired', 'mixed', 'flow-done', 'moved', 'screen', 'screen-done', 'cut-compact', 'screen-compact', 'hook-quiet', 'hook-held', 'agent-hooked', 'none']) fs.utimesSync(b.transcript(k), new Date(Q0 + 2000), new Date(Q0 + 2000));
   for (const k of ['woken', 'messaged', 'again', 'local', 'skill', 'shell-report', 'cut-woken', 'hooked']) fs.utimesSync(b.transcript(k), new Date(Q0 + 3000), new Date(Q0 + 3000));
   await b.start();
-  const snap = await b.waitFor('the agent waiting on its shell', (st) => st.sessions.length >= 27 && b.view(st, 'shelled').agents.some((a) => a.state === 'waiting'));
+  const snap = await b.waitFor('the agent waiting on its shell', (st) => st.sessions.length >= 29 && b.view(st, 'shelled').agents.some((a) => a.state === 'waiting'));
   const look = (k) => { const v = b.view(snap, k); return [v.state, v.act && v.act.label, v.trouble && v.trouble.kind]; };
   const stalled = (k) => snap.attention.some((a) => a.sid === b.sessions[k].sid && a.text === 'No activity while working');
   assert.deepEqual(look('one'), ['working', 'Waiting on background agent: Watch the deploy', null]);
@@ -462,7 +468,8 @@ test('a busy session whose turn has ended waits on the background agents and wor
   assert.equal(b.view(snap, 'local').since, Q0 + 2000);
   assert.deepEqual([b.view(snap, 'local').turnStartedAt, b.view(snap, 'local').prompt], [Q0, 'do the work']);
   assert.deepEqual(look('cut-compact'), ['working', 'Waiting on background agent: Watch the deploy', null]);
-  assert.deepEqual(look('hook-other'), ['working', 'Waiting on background agent: Watch the deploy', null]);
+  for (const k of ['hook-quiet', 'hook-held']) assert.deepEqual(look(k), ['working', 'Waiting on background agent: Watch the deploy', null], k);
+  assert.deepEqual(look('agent-hooked'), ['working', 'Waiting on background agent: Review the diff', null]);
   assert.equal(b.view(snap, 'cut-compact').since, Q0 + 2000);
   assert.deepEqual(look('cut'), ['working', 'Waiting on background agent: Watch the deploy', null]);
   assert.equal(b.view(snap, 'cut').since, Q0 + 2000);
