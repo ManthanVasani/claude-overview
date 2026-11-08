@@ -131,8 +131,10 @@ itself, already running: open its address.
 Each session is a card. What it started branches off to its right: its agents, workflows and background shells, each
 with what it is doing now. A session card says **Working** (green), **Your turn** (amber: it has finished and waits
 for your next message), **Needs you** (pink: it waits for your permission or an answer) or **Stopped** (red: an error
-ended its turn). The column on the right lists what needs attention, the files, servers and sites the sessions are
-touching, and each tool call as it happens. The timeline runs along the bottom.
+ended its turn). A session whose turn has ended while agents it started in the background still run stays
+**Working**, waiting on them, as Claude Code reports it. The column on the right lists what needs attention, the
+files, servers and sites the sessions are touching, and each tool call as it happens. The timeline runs along the
+bottom.
 
 | Key or action | What it does |
 | --- | --- |
