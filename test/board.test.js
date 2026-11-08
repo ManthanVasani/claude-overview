@@ -474,3 +474,17 @@ test('a busy session whose turn has ended waits on the background agents and wor
   assert.deepEqual(look('none'), ['working', 'Thinking', 'stalled']);
   assert.deepEqual(['one', 'two', 'flow', 'mixed', 'cut', 'orphan', 'stopped', 'retired', 'moved', 'again', 'local', 'screen', 'shelled', 'none'].map(stalled), [false, false, false, false, false, false, false, false, false, false, false, false, true, true]);
 });
+
+test('a session stopped by an API error is your turn again once a compaction has run, and the summary is not your prompt', { timeout: SERVER_TEST_MS, skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
+  const Q0 = Date.now() - 4 * 60000;
+  const b = new Board('compact-', { startedAt: Q0 - 5000 });
+  t.after(() => b.stop());
+  const typed = (at, content) => ({ type: 'user', timestamp: new Date(at).toISOString(), message: { role: 'user', content } });
+  const tooLong = { type: 'assistant', isApiErrorMessage: true, timestamp: new Date(Q0 + 1000).toISOString(), message: { id: 'mErr', role: 'assistant', model: '<synthetic>', content: [{ type: 'text', text: 'Prompt is too long' }] } };
+  const summary = Object.assign(typed(Q0 + 2500, 'This session is being continued from a previous conversation that ran out of context.'), { isCompactSummary: true });
+  b.session('compacted', { status: 'idle', statusUpdatedAt: Q0 + 3000 }, [prompt(Q0), tooLong, typed(Q0 + 2000, '<command-name>/compact</command-name>'), summary, typed(Q0 + 2600, '<local-command-stdout>Compacted</local-command-stdout>')]);
+  b.session('stopped', { status: 'idle', statusUpdatedAt: Q0 + 3000 }, [prompt(Q0), tooLong]);
+  await b.start();
+  const snap = await b.waitFor('both sessions', (st) => b.view(st, 'compacted') && b.view(st, 'stopped'));
+  assert.deepEqual(['compacted', 'stopped'].map((k) => [b.view(snap, k).state, b.view(snap, k).prompt]), [['your-turn', 'do the work'], ['error', 'do the work']]);
+});
