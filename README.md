@@ -18,7 +18,7 @@ another window? claude-overview puts every session on one live board in your bro
 - **Which session needs you.** A session waiting for your permission or an answer turns pink, and the tab title
   counts the sessions that are waiting.
 - **Desktop alerts** when a session needs you or something fails, while the page is open but not in front. Turn them
-  on with the bell button.
+  on with the bell button, and mute one session from its details.
 - **Everything a session runs:** its agents, workflows and background shells, and what each one is doing now.
 - **Hide a session** you do not need to watch. It comes back on its own while it needs you.
 - **A timeline of every tool call**, over the last 15 minutes, hour or 3 hours, or live.
@@ -144,6 +144,7 @@ touching, and each tool call as it happens. The timeline runs along the bottom.
 | S | Hides or shows the right-hand column, in a window wide enough to have one. |
 | Active only | Hides finished agents, shells and workflows. |
 | Hide session, in a session's details | Takes the session and the sessions it started off the map, the timeline, the right-hand column and the counts. Opened again from **N hidden**, beside the counts, it stays while its details are open. It comes back while it waits for you, and sends no alert when it finishes its turn. Unhide session puts it back, together with any hidden session that started it. |
+| The bell, in a session's details | Mutes every desktop alert from that session until it ends, Needs you and the alert for its end included. It stays on the board, in the counts and in the tab title, marked **muted**. Press it again to unmute; nothing that began while it was muted sends an alert. |
 | Click a card | Shows what it is doing, what it has touched and what failed. Esc closes it. |
 | The timeline | Every tool call over the last 15m, 1h or 3h. Drag it to look further back; Live, or L, comes back to now. T folds it away. |
 | Usage, or U | Token totals by day, model, session and folder, how often a reply wrote the prompt cache again after a wait or an account switch and what that cost, and the plan limits of each cswap account. |
@@ -152,11 +153,12 @@ To turn on desktop alerts, click the bell button in the bottom row and turn on t
 time, the browser asks whether the page may show notifications: allow it. Alerts show while the page is open but not
 in front: when a session needs you, when something fails or stops and, if you tick that option in the bell's menu,
 when a session finishes its turn. Clicking an alert opens that card. An alert can quote an error or what the session
-last said, and your system may show alerts on the lock screen. The bell is hidden on a phone-sized screen.
+last said, and your system may show alerts on the lock screen. The bell is hidden on a phone-sized screen. The bell
+in a session's details mutes that session alone.
 
 A reload keeps how you left it: the zoom (and the scroll, in a window of the same size), the open panel, expanded
-groups, the timeline, the right-hand column and the hidden sessions. The browser keeps these for the address you
-opened, so `localhost` and `127.0.0.1` each have their own.
+groups, the timeline, the right-hand column, the hidden sessions and the muted ones. The browser keeps these for the
+address you opened, so `localhost` and `127.0.0.1` each have their own.
 
 ![The whole board: five sessions, the needs-attention list, what they are touching and the timeline](docs/screenshots/overview.png)
 

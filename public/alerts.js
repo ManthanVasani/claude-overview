@@ -6,6 +6,7 @@
   const MAX_SEPARATE = 3;
   // a row can drop out for one poll and come back with the same key
   const FORGET_MS = 3600000;
+  const MUTED_KEY = 'claude-overview-muted';
 
   const $ = (id) => document.getElementById(id);
   const btn = $('alerts-btn');
@@ -17,6 +18,10 @@
   const supported = 'Notification' in window;
 
   let prefs = load();
+  let muted = new Map();
+  let unsaved = false;
+  loadMuted();
+  const subs = [];
   let latest = null;
   let seen = null;
   let boot = null;
@@ -30,6 +35,49 @@
   }
   function save() {
     try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (e) { /* storage unavailable */ }
+  }
+  function loadMuted() {
+    let raw;
+    try { raw = localStorage.getItem(MUTED_KEY); } catch (e) { return; }
+    let v = null;
+    try { v = JSON.parse(raw); } catch (e) { /* corrupt */ }
+    muted = new Map();
+    if (v && typeof v === 'object') for (const k of Object.keys(v)) if (typeof v[k] === 'number') muted.set(k, v[k]);
+  }
+  // another tab can have changed the list since this one read it, but a list this one could not save is the newer
+  function editMuted(fn) {
+    if (!unsaved) loadMuted();
+    fn();
+    const o = {};
+    for (const [k, t] of muted) o[k] = t;
+    try {
+      localStorage.setItem(MUTED_KEY, JSON.stringify(o));
+      unsaved = false;
+    } catch (e) { unsaved = true; }
+  }
+  // a resumed session runs in a new process, which the mute was not asked for
+  function runOf(s) { return s.id + '|' + s.pid + '|' + s.startedAt; }
+  function isMuted(s) { return !!s && muted.has(runOf(s)); }
+  function mute(s, on) {
+    editMuted(() => { if (on) muted.set(runOf(s), 0); else muted.delete(runOf(s)); });
+    for (const fn of subs) fn();
+  }
+  // a quiet board can send nothing for hours, so the hour runs from the first snapshot without the run
+  function trackMuted(runs, t) {
+    let changed = false;
+    for (const [k, gone] of muted) {
+      if (runs.has(k) ? !gone : gone && t - gone <= FORGET_MS) continue;
+      if (runs.has(k)) muted.set(k, 0);
+      else if (!gone) muted.set(k, t);
+      else muted.delete(k);
+      changed = true;
+    }
+    return changed;
+  }
+  function keepMuted(list, t) {
+    if (!muted.size || !list.length) return;
+    const runs = new Set(list.map(runOf));
+    if (trackMuted(runs, t)) editMuted(() => trackMuted(runs, t));
   }
   function permission() { return supported ? Notification.permission : 'unsupported'; }
   function live() { return prefs.on && permission() === 'granted'; }
@@ -99,6 +147,7 @@
         // on a your-turn session the server sets a reason only when you interrupted it
         if (!now || now.state !== 'your-turn' || now.parentSid || now.headless || now.reason) return;
         if (window.OVHidden && window.OVHidden.within(now.id, latest)) return;
+        if (isMuted(now)) return;
         // the server keeps the last thing said, which can be from an earlier turn
         const said = now.said && now.said.text && now.said.at >= (now.turnStartedAt || 0) ? now.said.text : 'It is waiting for your next message';
         if (prefs.turns && armed()) notify('turn:' + s.id + ':' + now.since, 'Your turn: ' + now.name, said, 's:' + s.id);
@@ -124,6 +173,7 @@
     const restarted = snap.boot !== boot;
     boot = snap.boot;
     const t = Date.now();
+    keepMuted(snap.sessions || [], t);
     const fresh = [];
     // a quiet board can send nothing for hours, so the hour runs from the first snapshot without the row
     for (const [k, gone] of seen) {
@@ -131,16 +181,17 @@
       else if (t - gone > FORGET_MS) seen.delete(k);
     }
     const attention = snap.attention || [];
+    const byId = new Map((snap.sessions || []).map((s) => [s.id, s]));
     for (const s of asking) {
       const k = 'needs|' + s.id + '|' + s.waiting.since;
-      if (!baseline && !seen.has(k) && prefs.needs) fresh.push(Object.assign({ key: k }, needOf(s)));
+      if (!baseline && !seen.has(k) && prefs.needs && !isMuted(s)) fresh.push(Object.assign({ key: k }, needOf(s)));
       seen.set(k, 0);
     }
     for (const a of attention) {
       // needs alerts come from the waiting status above, and an agent's quiet row has the key its failure will have
       if (a.quiet || a.level === 'needs') continue;
       const k = keyOf(a);
-      if (!baseline && !seen.has(k) && prefs.problems && !restarted) fresh.push(Object.assign({ key: k }, a));
+      if (!baseline && !seen.has(k) && prefs.problems && !restarted && !isMuted(byId.get(a.sid))) fresh.push(Object.assign({ key: k }, a));
       seen.set(k, 0);
     }
     announce(fresh);
@@ -227,8 +278,16 @@
     if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) closeMenu(false);
   });
   window.addEventListener('resize', () => closeMenu(false));
-  window.addEventListener('storage', (e) => { if (e.key === PREFS_KEY) { prefs = load(); paint(); } });
+  window.addEventListener('storage', (e) => {
+    if (e.key === PREFS_KEY) { prefs = load(); paint(); }
+    if (e.key !== MUTED_KEY && e.key !== null) return;
+    const was = [...muted.keys()].sort().join();
+    if (!unsaved) loadMuted();
+    // only the set of muted runs shows on the board
+    if ([...muted.keys()].sort().join() !== was) for (const fn of subs) fn();
+  });
 
   paint();
-  window.OVAlerts = { onSnap, onLost };
+  // a browser that cannot show alerts has nothing to mute
+  window.OVAlerts = { onSnap, onLost, muted: isMuted, mute: supported ? mute : null, on(fn) { subs.push(fn); } };
 })();
