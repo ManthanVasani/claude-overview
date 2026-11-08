@@ -82,6 +82,11 @@ test('with nothing running in the foreground, what woke the next call is the cau
   assert.equal(feed([warm(T0, { stop: 'end_turn' }), prompt(T0 + 20 * MIN, 'next'), cold(T0 + 20 * MIN)], true)[0].cause, 'resumed');
   assert.equal(feed([warm(T0, { stop: 'end_turn' }), notification(T0 + 15 * MIN, 'b1'), prompt(T0 + 16 * MIN, 'next'), cold(T0 + 16 * MIN)])[0].cause, 'background');
   assert.equal(feed([warm(T0, { stop: 'end_turn' }), prompt(T0 + 15 * MIN, 'next'), notification(T0 + 16 * MIN, 'b1'), cold(T0 + 16 * MIN)])[0].cause, 'you');
+  const transcriptOnly = Object.assign(notification(T0 + 15 * MIN, 'b1'), { queueTranscriptOnly: true, origin: { kind: 'task-notification' } });
+  assert.equal(feed([warm(T0, { stop: 'end_turn' }), transcriptOnly, prompt(T0 + 16 * MIN, 'next'), cold(T0 + 16 * MIN)])[0].cause, 'you');
+  assert.equal(feed([warm(T0, { stop: 'end_turn' }), transcriptOnly, prompt(T0 + 16 * MIN, 'next'), cold(T0 + 16 * MIN)], true)[0].cause, 'resumed');
+  assert.equal(feed([warm(T0, { stop: 'end_turn' }), transcriptOnly, cold(T0 + 16 * MIN)])[0].cause, 'other');
+  assert.equal(feed([warm(T0, { stop: 'end_turn' }), prompt(T0 + 16 * MIN, 'why is "queueTranscriptOnly":true set'), cold(T0 + 16 * MIN)])[0].cause, 'you');
   const meta = Object.assign(prompt(T0 + 19 * MIN, 'a reminder'), { isMeta: true });
   assert.equal(feed([warm(T0, { stop: 'end_turn' }), meta, cold(T0 + 20 * MIN)])[0].cause, 'other');
   assert.equal(feed([warm(T0, { stop: 'end_turn' }), meta, cold(T0 + 20 * MIN)], true)[0].cause, 'other');
