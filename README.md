@@ -93,7 +93,7 @@ Next time, in that folder (`cd ~/claude-overview`):
 
 - `./overview start` starts it. When it is already running, it only says so.
 - `./overview status` says whether it is running.
-- `./overview stop` stops it, and returns once it has closed. If it is still running 5 seconds later, it says so
+- `./overview stop` stops it, and returns once it has closed. If it has not closed within a few seconds, it says so
   and fails.
 
 The board's own messages, errors included, go to `overview.log` in that folder. It does not start again by itself
