@@ -383,6 +383,7 @@ test('a busy session whose turn has ended waits on the background agents and wor
   const queue = (t) => [{ type: 'queue-operation', operation: 'enqueue', timestamp: new Date(t).toISOString(), content: report }, { type: 'queue-operation', operation: 'dequeue', timestamp: new Date(t + 10).toISOString() }];
   const peer = (t) => ({ type: 'user', isMeta: true, timestamp: new Date(t).toISOString(), message: { role: 'user', content: 'Another Claude session sent a message' } });
   const typed = (t, content, isMeta) => ({ type: 'user', isMeta, timestamp: new Date(t).toISOString(), message: { role: 'user', content } });
+  const compacted = (t) => Object.assign(typed(t, 'This session is being continued from a previous conversation that ran out of context.'), { isCompactSummary: true });
   b.session('one', busy, [prompt(Q0), ...start('tuOne', 'Watch the deploy'), said(Q0 + 2000)]);
   b.agent('one', 'g1', meta('tuOne', 'Watch the deploy'), working);
   b.agent('one', 'g1b', { description: 'Read the logs', agentType: 'general-purpose', toolUseId: 'tuSub', parentAgentId: 'g1', spawnDepth: 2 }, working);
@@ -416,7 +417,7 @@ test('a busy session whose turn has ended waits on the background agents and wor
   b.agent('messaged', 'g10', meta('tuMs', 'Watch the deploy'), working);
   b.session('again', busy, [prompt(Q0), ...start('tuAg', 'Watch the deploy'), prompt(Q0 + 2000, '[Request interrupted by user]'), notification(Q0 + 2500, 'gdone'), said(Q0 + 3000)]);
   b.agent('again', 'g14', meta('tuAg', 'Watch the deploy'), working);
-  b.session('local', busy, [prompt(Q0), ...start('tuLc', 'Watch the deploy'), said(Q0 + 2000), typed(Q0 + 2500, '<local-command-caveat>Caveat: run by the user</local-command-caveat>', true), typed(Q0 + 2600, '<command-name>/cost</command-name>\n<command-message>cost</command-message>\n<command-args></command-args>'), typed(Q0 + 2700, '<local-command-stdout>Total cost: $1.00</local-command-stdout>'), typed(Q0 + 2800, '<bash-input>git status</bash-input>'), typed(Q0 + 2900, '<bash-stdout>clean</bash-stdout><bash-stderr></bash-stderr>'), typed(Q0 + 2950, '<user-memory-input>Use the staging database</user-memory-input>'), Object.assign(typed(Q0 + 2960, 'This session is being continued from a previous conversation that ran out of context.'), { isCompactSummary: true })]);
+  b.session('local', busy, [prompt(Q0), ...start('tuLc', 'Watch the deploy'), said(Q0 + 2000), typed(Q0 + 2500, '<local-command-caveat>Caveat: run by the user</local-command-caveat>', true), typed(Q0 + 2600, '<command-name>/cost</command-name>\n<command-message>cost</command-message>\n<command-args></command-args>'), typed(Q0 + 2700, '<local-command-stdout>Total cost: $1.00</local-command-stdout>'), typed(Q0 + 2800, '<bash-input>git status</bash-input>'), typed(Q0 + 2900, '<bash-stdout>clean</bash-stdout><bash-stderr></bash-stderr>'), typed(Q0 + 2950, '<user-memory-input>Use the staging database</user-memory-input>'), compacted(Q0 + 2960)]);
   b.agent('local', 'g17', meta('tuLc', 'Watch the deploy'), working);
   b.session('skill', busy, [prompt(Q0), ...start('tuSk', 'Watch the deploy'), said(Q0 + 2000), typed(Q0 + 2900, '<command-message>review</command-message>\n<command-name>/review</command-name>'), typed(Q0 + 3000, 'Review the open pull request.', true)]);
   b.agent('skill', 'g18', meta('tuSk', 'Watch the deploy'), working);
@@ -425,6 +426,10 @@ test('a busy session whose turn has ended waits on the background agents and wor
   b.agent('screen', 'g19', meta('tuScr', 'Watch the deploy'), working);
   b.session('screen-done', screen, [prompt(Q0), ...start('tuScd', 'Watch the deploy'), said(Q0 + 2000)]);
   b.agent('screen-done', 'g20', meta('tuScd', 'Watch the deploy'), [prompt(Q0 + 1200), said(Q0 + 1500)]);
+  b.session('cut-compact', busy, [prompt(Q0), ...start('tuCc', 'Watch the deploy'), prompt(Q0 + 2000, '[Request interrupted by user]'), compacted(Q0 + 2500)]);
+  b.agent('cut-compact', 'g21', meta('tuCc', 'Watch the deploy'), working);
+  b.session('screen-compact', screen, [prompt(Q0), ...start('tuScc', 'Watch the deploy'), said(Q0 + 2000), compacted(Q0 + 2500)]);
+  b.agent('screen-compact', 'g22', meta('tuScc', 'Watch the deploy'), [prompt(Q0 + 1200), said(Q0 + 1500)]);
   b.session('cut-woken', busy, [prompt(Q0), ...start('tuCw', 'Watch the deploy'), prompt(Q0 + 2000, '[Request interrupted by user]'), peer(Q0 + 3000)]);
   b.agent('cut-woken', 'g11', meta('tuCw', 'Watch the deploy'), working);
   b.session('moved', busy, [prompt(Q0), call(Q0 + 1000, 'Agent', { description: 'Check the logs', prompt: 'look', subagent_type: 'general-purpose' }, 'tuFg'), said(Q0 + 2000)]);
@@ -433,10 +438,10 @@ test('a busy session whose turn has ended waits on the background agents and wor
   b.agent('mid', 'g7', meta('tuMid', 'Watch the deploy'), working);
   b.session('none', busy, [prompt(Q0), ...start('tuNone', 'Watch the deploy'), said(Q0 + 2000)]);
   b.agent('none', 'g5', meta('tuNone', 'Watch the deploy'), [prompt(Q0 + 1200), said(Q0 + 1500)]);
-  for (const k of ['one', 'two', 'flow', 'cut', 'shelled', 'orphan', 'stopped', 'retired', 'mixed', 'flow-done', 'moved', 'screen', 'screen-done', 'none']) fs.utimesSync(b.transcript(k), new Date(Q0 + 2000), new Date(Q0 + 2000));
+  for (const k of ['one', 'two', 'flow', 'cut', 'shelled', 'orphan', 'stopped', 'retired', 'mixed', 'flow-done', 'moved', 'screen', 'screen-done', 'cut-compact', 'screen-compact', 'none']) fs.utimesSync(b.transcript(k), new Date(Q0 + 2000), new Date(Q0 + 2000));
   for (const k of ['woken', 'messaged', 'again', 'local', 'skill', 'cut-woken']) fs.utimesSync(b.transcript(k), new Date(Q0 + 3000), new Date(Q0 + 3000));
   await b.start();
-  const snap = await b.waitFor('the agent waiting on its shell', (st) => st.sessions.length >= 21 && b.view(st, 'shelled').agents.some((a) => a.state === 'waiting'));
+  const snap = await b.waitFor('the agent waiting on its shell', (st) => st.sessions.length >= 23 && b.view(st, 'shelled').agents.some((a) => a.state === 'waiting'));
   const look = (k) => { const v = b.view(snap, k); return [v.state, v.act && v.act.label, v.trouble && v.trouble.kind]; };
   const stalled = (k) => snap.attention.some((a) => a.sid === b.sessions[k].sid && a.text === 'No activity while working');
   assert.deepEqual(look('one'), ['working', 'Waiting on background agent: Watch the deploy', null]);
@@ -446,6 +451,9 @@ test('a busy session whose turn has ended waits on the background agents and wor
   assert.deepEqual(look('mixed'), ['working', 'Waiting on 1 background agent and 1 workflow', null]);
   assert.deepEqual(look('local'), ['working', 'Waiting on background agent: Watch the deploy', null]);
   assert.equal(b.view(snap, 'local').since, Q0 + 2000);
+  assert.deepEqual([b.view(snap, 'local').turnStartedAt, b.view(snap, 'local').prompt], [Q0, 'do the work']);
+  assert.deepEqual(look('cut-compact'), ['working', 'Waiting on background agent: Watch the deploy', null]);
+  assert.equal(b.view(snap, 'cut-compact').since, Q0 + 2000);
   assert.deepEqual(look('cut'), ['working', 'Waiting on background agent: Watch the deploy', null]);
   assert.equal(b.view(snap, 'cut').since, Q0 + 2000);
   assert.deepEqual(look('orphan'), ['working', 'Waiting on background agent: Read the logs', null]);
@@ -457,7 +465,7 @@ test('a busy session whose turn has ended waits on the background agents and wor
   for (const k of ['flow-done', 'woken', 'messaged', 'skill', 'cut-woken']) assert.deepEqual(look(k), ['working', 'Thinking', 'stalled'], k);
   assert.deepEqual(look('shelled'), ['working', 'Thinking', 'stalled']);
   assert.deepEqual(look('screen'), ['working', 'Waiting on background agent: Watch the deploy', null]);
-  assert.equal(b.view(snap, 'screen-done').state, 'your-turn');
+  assert.deepEqual(['screen-done', 'screen-compact'].map((k) => b.view(snap, k).state), ['your-turn', 'your-turn']);
   assert.deepEqual(look('mid'), ['working', 'Check it', null]);
   assert.deepEqual(look('none'), ['working', 'Thinking', 'stalled']);
   assert.deepEqual(['one', 'two', 'flow', 'mixed', 'cut', 'orphan', 'stopped', 'retired', 'moved', 'again', 'local', 'screen', 'shelled', 'none'].map(stalled), [false, false, false, false, false, false, false, false, false, false, false, false, true, true]);
