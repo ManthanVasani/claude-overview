@@ -895,7 +895,7 @@
   const bellEl = document.querySelector('#alerts-btn svg');
   const BELL = bellEl ? bellEl.innerHTML : '';
   const SLASH = '<path d="M2.5 2.5l11 11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>';
-  // an ended or headless session sends no more alerts
+  // an ended or headless session has no alert left that a mute could stop
   function canMute(x) { return !!(x.alive && !x.headless && window.OVAlerts && window.OVAlerts.mute); }
   function isMuted(x) { return canMute(x) && window.OVAlerts.muted(x); }
   function sessionOf(id) { return id && /^(s|a|w|wa|t):/.test(id) ? id.split(':')[1] : null; }

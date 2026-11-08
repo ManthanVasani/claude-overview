@@ -83,11 +83,10 @@ test('a hidden session sends its Needs you alert, and a problem alert while the 
   const p = page(['a']);
   p.snap([session('a', 'working')]);
   p.snap([session('a', 'needs-you', { waiting: { since: 6, text: 'Waiting for your permission' } })]);
-  const stopped = { level: 'error', sid: 'a', node: 's:a', title: 'A', text: 'Stopped: API Error', since: 7, session: 'A', quiet: false };
   const sessions = [session('a', 'error')];
-  p.snap(sessions, [stopped]);
+  p.snap(sessions, [stopped('a')]);
   assert.deepEqual(p.sent, ['Needs you: A', 'A']);
-  assert.ok(p.hidden.view({ sessions, attention: [stopped] }, false, null).gone.has('a'));
+  assert.ok(p.hidden.view({ sessions, attention: [stopped('a')] }, false, null).gone.has('a'));
 });
 
 test('the page loads hidden.js before the scripts that read it', () => {
