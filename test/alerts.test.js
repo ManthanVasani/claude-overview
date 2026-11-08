@@ -173,7 +173,7 @@ test('a mute or unmute in one tab applies in the others and redraws them, and it
   two.storage('claude-overview-muted');
   assert.ok(two.alerts.muted(a));
   one.snap([session('b', 'working')]);
-  assert.notEqual(one.store.get('claude-overview-muted'), JSON.stringify({ 'a|100|1': 0 }));
+  assert.ok(JSON.parse(one.store.get('claude-overview-muted'))['a|100|1'] > 0);
   two.storage('claude-overview-muted');
   one.alerts.mute(a, false);
   two.storage(null);
@@ -209,7 +209,7 @@ test('when the storage cannot be written, a mute lasts as long as the page', () 
   assert.deepEqual(p.sent, []);
 });
 
-test('when the storage stops being readable, the page keeps its mutes and does not write over the stored ones', () => {
+test('when the storage stops being readable, the page keeps its mutes and saves them, not an empty list', () => {
   const p = page([]);
   const a = session('a', 'working');
   p.snap([a]);
