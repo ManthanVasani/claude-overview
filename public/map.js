@@ -892,6 +892,12 @@
   // not setFollow: a saved free view must outlast a reload that never gets a snapshot
   paintFit();
 
+  const bellEl = document.querySelector('#alerts-btn svg');
+  const BELL = bellEl ? bellEl.innerHTML : '';
+  const SLASH = '<path d="M2.5 2.5l11 11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>';
+  // an ended or headless session sends no more alerts
+  function canMute(x) { return !!(x.alive && !x.headless && window.OVAlerts && window.OVAlerts.mute); }
+  function isMuted(x) { return canMute(x) && window.OVAlerts.muted(x); }
   function sessionOf(id) { return id && /^(s|a|w|wa|t):/.test(id) ? id.split(':')[1] : null; }
   function paintHidden(was) {
     const handOff = !hid.count && !hiddenBtn.hidden && document.activeElement === hiddenBtn;
@@ -915,6 +921,8 @@
       render();
     });
   }
+  // alerts.js loads after this file
+  document.addEventListener('DOMContentLoaded', () => { if (window.OVAlerts && window.OVAlerts.on) window.OVAlerts.on(render); });
 
   // ---------- card markup ----------
 
@@ -970,14 +978,14 @@
           '<div class="hd">' + icon(st) + '<span class="ttl">' + esc(x.name) + '</span>' + chip(st) + '</div>' +
           actLine(sessionAct(x), wraps(n)) +
           '<div class="line"><span class="k">Asked</span>' + esc(flat(x.prompt) || '—') + '</div>' +
-          '<div class="meta">' + (hid.marked.has(String(x.id)) ? '<span class="badge">hidden</span> ' : '') + joinMeta([x.branch, prs, model(x.model), x.ctx ? tok(x.ctx) + ' context' : '', x.alive ? '' : 'pid ' + x.pid]) + '</div>' +
+          '<div class="meta">' + (hid.marked.has(String(x.id)) ? '<span class="badge">hidden</span> ' : '') + (isMuted(x) ? '<span class="badge">muted</span> ' : '') + joinMeta([x.branch, prs, model(x.model), x.ctx ? tok(x.ctx) + ' context' : '', x.alive ? '' : 'pid ' + x.pid]) + '</div>' +
           '<div class="foot"><div class="spark"></div><span class="cnt">' + esc(runningCounts(x)) + '</span></div></div>';
       }
       case 'child':
         return '<div class="card child" title="' + esc(x.name) + '">' +
           '<div class="hd">' + icon(st) + '<span class="ttl">' + esc(x.name) + '</span><span class="badge">session</span></div>' +
           actLine(sessionAct(x), wraps(n)) +
-          '<div class="meta">' + (hid.marked.has(String(x.id)) ? '<span class="badge">hidden</span> ' : '') + joinMeta([model(x.model), x.ctx ? tok(x.ctx) + ' context' : '', x.cwd]) + '</div></div>';
+          '<div class="meta">' + (hid.marked.has(String(x.id)) ? '<span class="badge">hidden</span> ' : '') + (isMuted(x) ? '<span class="badge">muted</span> ' : '') + joinMeta([model(x.model), x.ctx ? tok(x.ctx) + ' context' : '', x.cwd]) + '</div></div>';
       case 'agent':
         return '<div class="card agent" title="' + esc(x.desc) + '">' +
           '<div class="hd">' + icon(st) + '<span class="ttl">' + esc(x.desc) + '</span><span class="rt">' + spanOf(x) + '</span></div>' +
@@ -1097,7 +1105,7 @@
       }
     }
     el.d = n;
-    el.setAttribute('aria-label', (n.kind === 'more' ? n.data.label : (n.data.name || n.data.desc || n.data.label || '') + ', ' + (LABEL[st] || st)) + ((n.kind === 'session' || n.kind === 'child') && hid.marked.has(String(n.data.id)) ? ', hidden' : ''));
+    el.setAttribute('aria-label', (n.kind === 'more' ? n.data.label : (n.data.name || n.data.desc || n.data.label || '') + ', ' + (LABEL[st] || st)) + ((n.kind === 'session' || n.kind === 'child') && hid.marked.has(String(n.data.id)) ? ', hidden' : '') + ((n.kind === 'session' || n.kind === 'child') && isMuted(n.data) ? ', muted' : ''));
   }
 
   function renderLane(el, L) {
@@ -1497,11 +1505,16 @@
   function link(n) { return n ? '<a class="p-link" data-focus="' + esc(n.id) + '">' + esc(nameOf(n)) + '</a>' : ''; }
   function when(t) { return t ? esc(clock(t)) + ' · <span data-since="' + Number(t) + '" data-ago></span>' : ''; }
 
+  function muteHtml(x) {
+    const on = isMuted(x);
+    return '<button type="button" class="p-mute" data-mute="' + esc(x.id) + '" aria-pressed="' + on + '" aria-label="Mute alerts" title="' + (on ? 'Muted until the session ends: no desktop alerts from it, not even Needs you' : 'Mute desktop alerts from this session until it ends, Needs you included') + '"><svg viewBox="0 0 16 16" aria-hidden="true">' + BELL + (on ? SLASH : '') + '</svg></button>';
+  }
   function panelHtml(n) {
     const x = n.data;
     const st = visState(n);
     const hide = hidden && (n.kind === 'session' || (n.kind === 'child' && hidden.within(x.id, snap))) ? '<button type="button" class="p-hide" data-hide="' + esc(x.id) + '">' + (hidden.within(x.id, snap) ? 'Unhide session' : 'Hide session') + '</button>' : '';
-    let h = '<div class="p-top"><span class="p-kind">' + esc(KIND[n.kind] || '') + '</span>' + hide + '<button type="button" class="p-x" data-close aria-label="Close">×</button></div>';
+    const mute = (n.kind === 'session' || n.kind === 'child') && canMute(x) ? muteHtml(x) : '';
+    let h = '<div class="p-top"><span class="p-kind">' + esc(KIND[n.kind] || '') + '</span>' + hide + mute + '<button type="button" class="p-x" data-close aria-label="Close">×</button></div>';
     h += '<h2 class="p-title">' + esc(nameOf(n)) + '</h2>';
     h += '<div class="p-state c-' + st + '">' + icon(st) + chip(st) + '</div>';
     const problem = x.reason && (BAD.has(st) || st === 'stopped' || st === 'ended') ? x.reason : x.trouble && x.trouble.kind !== 'stalled' ? x.trouble.text : null;
@@ -1658,6 +1671,12 @@
         closePanel();
         hiddenBtn.focus();
       }
+      return;
+    }
+    const mb = e.target.closest('[data-mute]');
+    if (mb) {
+      const s = (snap.sessions || []).find((x) => String(x.id) === mb.getAttribute('data-mute'));
+      if (s) window.OVAlerts.mute(s, !window.OVAlerts.muted(s));
       return;
     }
     const res = e.target.closest('[data-res]');
