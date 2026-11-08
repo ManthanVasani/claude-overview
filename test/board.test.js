@@ -535,7 +535,7 @@ test('a compaction ends a stop or a retry by an API error: a stopped session is 
   assert.deepEqual([b.view(snap, 'retried').state, b.view(snap, 'retried').act.label], ['working', 'Waiting on background agent: Watch the deploy']);
 });
 
-test('every part of the board reads the same turn end: a turn ended by an error or an interrupt waits on its agents, a report or a Stop hook that wakes a session under a screen it opened leaves it working, a report Claude Code only writes down wakes nothing, only an interrupted turn says you interrupted it, and a refusal ends no turn, since Claude Code goes on after it', { timeout: SERVER_TEST_MS, skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
+test('every part of the board reads the same turn end: a turn ended by an error or an interrupt waits on its agents, then is your turn also under a screen, a report or a Stop hook that wakes a session under a screen it opened leaves it working, a report Claude Code only writes down wakes nothing, also in an agent, only an interrupted turn says you interrupted it, and a refusal ends no turn, since Claude Code goes on after it', { timeout: SERVER_TEST_MS, skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
   const Q0 = Date.now() - 4 * 60000;
   const b = new Board('turnend-', { startedAt: Q0 - 5000 });
   t.after(() => b.stop());
@@ -553,16 +553,17 @@ test('every part of the board reads the same turn end: a turn ended by an error 
   const hooked = (ms) => ({ type: 'system', subtype: 'stop_hook_summary', timestamp: at(ms), hookCount: 1, hookInfos: [{ command: 'check.sh' }], hookErrors: [], hookAdditionalContext: ['Check the tests'], preventedContinuation: false, stopReason: '', hasOutput: true, level: 'suggestion', toolUseID: 'h' + ms });
   const failed = { type: 'assistant', isApiErrorMessage: true, timestamp: at(Q0 + 2000), message: { id: 'mErr', role: 'assistant', model: '<synthetic>', content: [{ type: 'text', text: 'Prompt is too long' }] } };
   const summary = Object.assign(typed(Q0 + 2500, 'This session is being continued from a previous conversation that ran out of context.'), { isCompactSummary: true });
+  const failedThenCompacted = [failed, typed(Q0 + 2100, '<command-name>/compact</command-name>'), summary];
   const retry = { type: 'system', subtype: 'api_error', timestamp: at(Q0 + 1500), error: { message: 'Overloaded' }, retryAttempt: 1, maxRetries: 10 };
   const runs = {
     refused: [busy, reply(Q0 + 2000, { stop: 'refusal' })],
-    failed: [busy, [failed, typed(Q0 + 2100, '<command-name>/compact</command-name>'), summary]],
+    failed: [busy, failedThenCompacted],
     'retry-cut': [busy, [retry, cut(Q0 + 2000)]],
     'screen-woken': [screen, [said(Q0 + 2000), notification(Q0 + 3000, 'gdone')]],
     'screen-hooked': [screen, [said(Q0 + 2000), hook(Q0 + 2900), hooked(Q0 + 3000)]],
     'screen-done': [screen, [said(Q0 + 2000)]],
     'screen-told': [screen, [said(Q0 + 2000), told(Q0 + 3000)]],
-    'screen-failed': [screen, [failed, typed(Q0 + 2100, '<command-name>/compact</command-name>'), summary]],
+    'screen-failed': [screen, failedThenCompacted],
     'told-waiting': [busy, [said(Q0 + 2000), told(Q0 + 3000)]],
   };
   const idleAgent = new Set(['screen-done', 'screen-told', 'screen-failed']);
@@ -579,11 +580,12 @@ test('every part of the board reads the same turn end: a turn ended by an error 
   b.agent('agent-told', 'g-at', meta('tu-at'), [prompt(Q0 + 1200), said(Q0 + 1500), told(Q0 + 1600)]);
   await b.start();
   const keys = [...Object.keys(runs), 'cut', 'cut-then-told', 'cut-then-report', 'agent-refused', 'agent-told'];
-  const snap = await b.waitFor('every session and its agent', (st) => keys.every((k) => b.view(st, k)) && b.view(st, 'agent-refused').agents.length === 1 && b.view(st, 'agent-told').agents.length === 1);
+  const withAgent = [...Object.keys(runs), 'agent-refused', 'agent-told'];
+  const snap = await b.waitFor('every session and its agent', (st) => keys.every((k) => b.view(st, k)) && withAgent.every((k) => b.view(st, k).agents.length === 1));
   const look = (k) => { const v = b.view(snap, k); return [v.state, v.act && v.act.label, v.trouble && v.trouble.kind]; };
   for (const k of ['failed', 'retry-cut', 'told-waiting']) assert.deepEqual([...look(k), b.view(snap, k).since], ['working', 'Waiting on background agent: Watch the deploy', null, Q0 + 2000], k);
   for (const k of ['refused', 'screen-woken', 'screen-hooked']) assert.deepEqual(look(k), ['working', 'Thinking', null], k);
-  assert.deepEqual(['screen-done', 'screen-told', 'screen-failed'].map((k) => b.view(snap, k).state), ['your-turn', 'your-turn', 'your-turn']);
+  for (const k of ['screen-done', 'screen-told', 'screen-failed']) assert.deepEqual([b.view(snap, k).state, b.view(snap, k).reason], ['your-turn', null], k);
   assert.deepEqual(['cut', 'cut-then-told', 'cut-then-report'].map((k) => [b.view(snap, k).state, b.view(snap, k).reason]), [['your-turn', 'You interrupted it'], ['your-turn', 'You interrupted it'], ['your-turn', null]]);
   assert.deepEqual(['agent-refused', 'agent-told'].map((k) => b.view(snap, k).agents[0].state), ['running', 'done']);
 });
