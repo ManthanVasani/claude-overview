@@ -371,7 +371,7 @@ test('who started a session is kept while it or a session it started is on the b
   assert.deepEqual(noteStarters(known, [c({ pid: 8 }), d], 2 * K + 1), { d: 'c' });
 });
 
-test('a background command or agent stopped with TaskStop shows stopped, also once its session runs in a new process, and a stop that failed changes nothing', { timeout: SERVER_TEST_MS, skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
+test('a background command or agent stopped with TaskStop shows stopped, also once its session runs in a new process or when the stop call was not read, and a stop that failed changes nothing', { timeout: SERVER_TEST_MS, skip: process.platform !== 'linux' && 'the /proc path is Linux only' }, async (t) => {
   const Q0 = Date.now() - 4 * 60000;
   const b = new Board('taskstop-', { startedAt: Q0 - 5000 });
   t.after(() => b.stop());
@@ -384,11 +384,13 @@ test('a background command or agent stopped with TaskStop shows stopped, also on
   b.session('agent', idle, [prompt(Q0), call(Q0 + 1000, 'Agent', { description: 'Watch the deploy', prompt: 'watch', subagent_type: 'general-purpose', run_in_background: true }, 'tuAgS'), result(Q0 + 1100, 'tuAgS', { status: 'async_launched', agentId: 'gstop1', description: 'Watch the deploy' }, 'Async agent launched successfully.'), ...stop('gstop1', 'local_agent'), said(Q0 + 2500)]);
   b.agent('agent', 'gstop1', { description: 'Watch the deploy', agentType: 'general-purpose', toolUseId: 'tuAgS', requestShape: 'background' }, [prompt(Q0 + 1200), call(Q0 + 1500, 'Bash', { command: 'tail deploy.log' })]);
   b.session('failed', idle, [prompt(Q0), ...shell('tuS3', 'bstop3'), ...failed('bstop3'), said(Q0 + 2500)]);
+  b.session('unpaired', idle, [prompt(Q0), ...shell('tuS4', 'bstop4'), stop('bstop4', 'local_bash')[1], said(Q0 + 2500)]);
   await b.start();
-  const snap = await b.waitFor('all four sessions', (st) => ['stopped', 'resumed', 'agent', 'failed'].every((k) => b.view(st, k)));
+  const snap = await b.waitFor('all four sessions', (st) => ['stopped', 'resumed', 'agent', 'failed', 'unpaired'].every((k) => b.view(st, k)));
   const shellOf = (k) => (b.view(snap, k).shells || []).map((x) => [x.id, x.state, x.doneAt]);
   assert.deepEqual(shellOf('stopped'), [['bstop1', 'stopped', Q0 + 2100]]);
   assert.deepEqual(shellOf('resumed'), [['bstop2', 'stopped', Q0 + 2100]]);
+  assert.deepEqual(shellOf('unpaired'), [['bstop4', 'stopped', Q0 + 2100]]);
   assert.deepEqual(b.view(snap, 'agent').agents.map((x) => [x.desc, x.state, x.reason]), [['Watch the deploy', 'stopped', 'Stopped']]);
   assert.deepEqual(shellOf('failed').map((x) => x.slice(0, 2)), [['bstop3', 'ended']]);
 });
