@@ -15,10 +15,10 @@ PORT="${CLAUDE_OVERVIEW_PORT:-3100}"
 URL="http://127.0.0.1:$PORT/"
 
 # Only node itself (by name or full path) running server.js counts, never a shell that mentions server.js.
+# Read from the arguments: on Linux, ps names a process after its main thread, which Node 24 renames.
 pids() {
-  ps -A -ww -o pid= -o ucomm= -o args= 2>/dev/null | while read -r pid comm args; do
-    [ "$comm" = node ] || continue
-    case "$args" in "node $SERVER" | */node\ "$SERVER") echo "$pid" ;; esac
+  ps -A -ww -o pid= -o args= 2>/dev/null | while read -r pid exe rest; do
+    case "$exe" in node | */node) [ "$rest" = "$SERVER" ] && echo "$pid" ;; esac
   done
 }
 
@@ -41,10 +41,15 @@ case "${1:-status}" in
   stop)
     running="$(pids)"
     if [ -z "$running" ]; then echo "Not running"; exit 0; fi
-    kill $running
+    kill $running || exit 1
     # a start right after this would find the old copy still closing
-    for _ in $(seq 50); do [ -z "$(pids)" ] && break; sleep 0.1; done
-    if [ -n "$(pids)" ]; then echo "Still closing (pid $running): run stop again in a moment"; exit 1; fi
+    for _ in {1..50}; do
+      left=""
+      for p in $running; do kill -0 "$p" 2> /dev/null && left="$left $p"; done
+      [ -z "$left" ] && break
+      sleep 0.1
+    done
+    if [ -n "$left" ]; then echo "Still running after 5 s (pid$left); kill -9$left ends it"; exit 1; fi
     echo "Stopped (pid $running)"
     ;;
   status)

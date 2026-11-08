@@ -93,7 +93,8 @@ Next time, in that folder (`cd ~/claude-overview`):
 
 - `./overview start` starts it. When it is already running, it only says so.
 - `./overview status` says whether it is running.
-- `./overview stop` stops it, and returns once it has closed.
+- `./overview stop` stops it, and returns once it has closed. If it is still running 5 seconds later, it says so
+  and fails.
 
 The board's own messages, errors included, go to `overview.log` in that folder. It does not start again by itself
 after you restart the computer. On WSL, it stops when WSL does, which can be soon after the last WSL window closes.
@@ -108,9 +109,7 @@ WSL) or `~/.zshrc` (zsh, the default on macOS):
 To update it, in that folder:
 
 ```
-./overview stop
-git pull
-./overview start
+./overview stop && git pull && ./overview start
 ```
 
 ### Use another port
