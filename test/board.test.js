@@ -562,24 +562,28 @@ test('every part of the board reads the same turn end: a turn ended by an error 
     'screen-hooked': [screen, [said(Q0 + 2000), hook(Q0 + 2900), hooked(Q0 + 3000)]],
     'screen-done': [screen, [said(Q0 + 2000)]],
     'screen-told': [screen, [said(Q0 + 2000), told(Q0 + 3000)]],
+    'screen-failed': [screen, [failed, typed(Q0 + 2100, '<command-name>/compact</command-name>'), summary]],
     'told-waiting': [busy, [said(Q0 + 2000), told(Q0 + 3000)]],
   };
+  const idleAgent = new Set(['screen-done', 'screen-told', 'screen-failed']);
   for (const [k, [reg, lines]] of Object.entries(runs)) {
     b.session(k, reg, [prompt(Q0), ...start('tu-' + k), ...lines]);
-    b.agent(k, 'g-' + k, meta('tu-' + k), k === 'screen-done' || k === 'screen-told' ? [prompt(Q0 + 1200), said(Q0 + 1500)] : working);
+    b.agent(k, 'g-' + k, meta('tu-' + k), idleAgent.has(k) ? [prompt(Q0 + 1200), said(Q0 + 1500)] : working);
   }
   b.session('cut', idle, [prompt(Q0), call(Q0 + 500, 'Bash', { command: 'make' }), cut(Q0 + 1000)]);
   b.session('cut-then-told', idle, [prompt(Q0), call(Q0 + 500, 'Bash', { command: 'make' }), cut(Q0 + 1000), told(Q0 + 2000)]);
   b.session('cut-then-report', idle, [prompt(Q0), call(Q0 + 500, 'Bash', { command: 'make' }), cut(Q0 + 1000), notification(Q0 + 2000, 'gdone'), said(Q0 + 3000)]);
   b.session('agent-refused', idle, [prompt(Q0), ...start('tu-ar'), said(Q0 + 2000)]);
   b.agent('agent-refused', 'g-ar', meta('tu-ar'), [prompt(Q0 + 1200), ...reply(Q0 + 1500, { stop: 'refusal' })]);
+  b.session('agent-told', idle, [prompt(Q0), ...start('tu-at'), said(Q0 + 2000)]);
+  b.agent('agent-told', 'g-at', meta('tu-at'), [prompt(Q0 + 1200), said(Q0 + 1500), told(Q0 + 1600)]);
   await b.start();
-  const keys = [...Object.keys(runs), 'cut', 'cut-then-told', 'cut-then-report', 'agent-refused'];
-  const snap = await b.waitFor('every session and its agent', (st) => keys.every((k) => b.view(st, k)) && b.view(st, 'agent-refused').agents.length === 1);
+  const keys = [...Object.keys(runs), 'cut', 'cut-then-told', 'cut-then-report', 'agent-refused', 'agent-told'];
+  const snap = await b.waitFor('every session and its agent', (st) => keys.every((k) => b.view(st, k)) && b.view(st, 'agent-refused').agents.length === 1 && b.view(st, 'agent-told').agents.length === 1);
   const look = (k) => { const v = b.view(snap, k); return [v.state, v.act && v.act.label, v.trouble && v.trouble.kind]; };
   for (const k of ['failed', 'retry-cut', 'told-waiting']) assert.deepEqual([...look(k), b.view(snap, k).since], ['working', 'Waiting on background agent: Watch the deploy', null, Q0 + 2000], k);
   for (const k of ['refused', 'screen-woken', 'screen-hooked']) assert.deepEqual(look(k), ['working', 'Thinking', null], k);
-  assert.deepEqual(['screen-done', 'screen-told'].map((k) => b.view(snap, k).state), ['your-turn', 'your-turn']);
+  assert.deepEqual(['screen-done', 'screen-told', 'screen-failed'].map((k) => b.view(snap, k).state), ['your-turn', 'your-turn', 'your-turn']);
   assert.deepEqual(['cut', 'cut-then-told', 'cut-then-report'].map((k) => [b.view(snap, k).state, b.view(snap, k).reason]), [['your-turn', 'You interrupted it'], ['your-turn', 'You interrupted it'], ['your-turn', null]]);
-  assert.equal(b.view(snap, 'agent-refused').agents[0].state, 'running');
+  assert.deepEqual(['agent-refused', 'agent-told'].map((k) => b.view(snap, k).agents[0].state), ['running', 'done']);
 });
